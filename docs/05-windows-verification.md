@@ -84,6 +84,18 @@
 - 本地重新下载 zip 后算 SHA256 = `a2969f9e…a82851`，与文件里 zip 那行一致。
 - `process_layer=partial detail=只有进程名，命令行为空（CIM 超时 6s）`：这台机器读不到命令行，属于**预期降级**，不是失败。
 
+### v0.3.0 的实际证据（2026-11-10）
+
+- tag 前最后一次全绿：门禁 run `42679530072`（`3bb22289`）→ `conclusion=success`，第 1–16 步全过（第 15 步 `publish release` 只在 tag 上跑，第 17 步 `scaffold only` 是空仓库兜底，按设计跳过）。
+- 新增第 10 步「queue dispatch against the exe」：用双卡替身（卡 0 剩 6330 MB、卡 1 剩 4987 MB）提交两件活——4 GB 的 `q-fit` 和 20 GB 的 `q-wait`。断言 `q-fit` 被自己放到卡 0、`q-wait` 留在 `queued` 并带等卡理由；再等 `q-fit` 变 `done` 且有 `run_id`，并确认 `logs` 里真的出现子进程的输出。实跑输出：`queue: q-fit placed on card 0, q-wait explains why it waits` / `queue: queued command really ran, run_id=rmw9my8f9oz7e`。
+- 第 11 步「progress from a live run」照旧：`percent 42, label 420/1000, eta 47s, visible in human output`。
+- 这一版新断言抓出三个真问题（都是 Windows 上才暴露的）：
+  1. 队列里的活起不来时永远停在 `starting`：`run` 的 `Bun.spawn` 抛错（Windows 上没有 `echo` 这个可执行文件，它是 cmd 内建）没人写回队列。修法：命令起不动就把 job 记成 `failed` 并写原因，同时看门狗把超过 2 分钟的 `starting` 也标失败。
+  2. 门禁断言抢在值班进程前面：`daemon` 是异步的，刚起就去读队列会读到"还没放上卡"。修法：轮询等放置落定再断言。
+  3. 放不下的活的理由在同一轮里才写：放置后要重新读一次队列，不能拿放置前的快照断言。
+- 体积（`3bb22289`）：`exe_bytes=115320320`（110 MB）、`zip_bytes=54741097`（52.2 MB）。
+- 本机 macOS `bun test` 77 条绿 / 184 断言（v0.2 的 62 条 + 队列入队-放置-看门狗 8 条 + 告警冷却 4 条 + 其它 3 条）。
+
 ### v0.2.0 的实际证据（2026-11-10）
 
 - 门禁 run `42658107537`（`dc39fc02`）与 `42660390025`（`c472b575`）均为 `conclusion=success`；后者是 tag 前的最后一次全绿。
