@@ -25,6 +25,15 @@ export type PlaceOptions = {
   per_card_limit?: number;
 };
 
+/**
+ * 这条任务还占不占着那张卡？
+ * failed / lost 说明 run 包装进程已经没了（或卡根本读不到），再把它算成"占着"只会让队列白等。
+ * stalled / suspect / slow 都还在跑，照占。
+ */
+export function occupiesSlot(verdict: string): boolean {
+  return verdict !== "failed" && verdict !== "lost";
+}
+
 export function freeMb(card: Card): number | null {
   if (card.total_mb === null || card.used_mb === null) return null;
   return Math.max(0, card.total_mb - card.used_mb);

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { freeMb, place, type Card } from "../queue";
+import { freeMb, occupiesSlot, place, type Card } from "../queue";
 
 const card = (index: number, total: number | null, used: number | null, util = 5): Card => ({
   index,
@@ -67,4 +67,14 @@ describe("选卡", () => {
     expect(out[0].id).toBe("first");
     expect(out[1].id).toBe("second");
   });
+});
+
+test("挂掉和断联的任务不再占坑，卡着的照占", () => {
+  // 包装进程没了：那张卡可以马上接下一件活，不该为它白等一个轮次。
+  expect(occupiesSlot("failed")).toBe(false);
+  expect(occupiesSlot("lost")).toBe(false);
+  // 还在跑，哪怕慢、哪怕可疑，都占着。
+  for (const verdict of ["ok", "slow", "suspect", "stalled", "unknown"]) {
+    expect(occupiesSlot(verdict)).toBe(true);
+  }
 });

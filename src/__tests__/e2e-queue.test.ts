@@ -53,10 +53,31 @@ test("排队的活由值班进程自己找卡起跑，跑完回写队列", async
       wait = byName("q-wait");
     }
 
+    // 卡住的时候要说得出"卡在哪"：把队列、心跳、run 自己的输出一起带进失败信息，
+    // 不然 Windows gate 上只能看到一个 starting，等于没有现场。
+    if (fit?.state !== "done") {
+      const logs = join(home, "logs");
+      const dumped: string[] = [];
+      for (const file of readdirSync(logs)) {
+        const body = readFileSync(join(logs, file), "utf8").slice(-800);
+        dumped.push(`--- ${file} ---\n${body}`);
+      }
+      const beat = (() => {
+        try {
+          return readFileSync(join(home, "daemon.json"), "utf8");
+        } catch {
+          return "(没有心跳)";
+        }
+      })();
+      throw new Error(
+        `q-fit 没跑完：state=${fit?.state} gpu=${fit?.gpu} run_id=${fit?.run_id} reason=${fit?.reason}\n` +
+          `q-wait: state=${wait?.state} reason=${wait?.reason}\n` +
+          `心跳: ${beat}\n${dumped.join("\n")}`,
+      );
+    }
     expect(fit?.gpu).toBe(0);
     expect(wait?.state).toBe("queued");
     expect(wait?.reason).toBeTruthy();
-    expect(fit?.state).toBe("done");
     expect(fit?.run_id).not.toBeNull();
 
     const logs = join(home, "logs");

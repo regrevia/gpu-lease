@@ -2,14 +2,14 @@
 // 单实例靠 daemon.lock；心跳写在 daemon.json，doctor / ls 能看出值班员还活着。
 // 这里不杀进程、不抢卡——先只做"看见并说出来"，调度在 0.3 的下一层。
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ALERT_TITLE, dueAlerts, formatAlert, planAlerts, type CooldownState } from "./alerts";
 import { postWebhook } from "./notify";
 import { stateDir } from "./paths";
 import { VERSION } from "./doctor";
 import { buildState } from "./state";
-import { place, type Card } from "./queue";
+import { occupiesSlot, place, type Card } from "./queue";
 import { selfCommand } from "./self";
 import {
   insertEvent,
@@ -59,6 +59,13 @@ export function daemonAlive(now = Date.now()): boolean {
  * 把排队里的活分到卡上并真的起。只在卡可用时动；分不进去就把"为什么在等"写回队列，
  * 让人在 `gpulease queue` 里看到的是原因，不是干等。
  */
+export function wrapperLogPath(name: string, id: string): string {
+  const safe = name.replace(/[^\p{L}\p{N}._-]/gu, "_").slice(0, 40) || "job";
+  const dir = join(stateDir(), "logs");
+  mkdirSync(dir, { recursive: true });
+  return join(dir, `wrapper-${safe}-${id}.log`);
+}
+
 function cooldownPath(): string {
   return join(stateDir(), "alert-cooldown.json");
 }
@@ -106,6 +113,8 @@ export async function dispatchQueued(
   const inUse = new Map<number, number>();
   for (const task of state.tasks) {
     if (task.run.gpu_hint === null) continue;
+    // 挂掉/断联的任务不再占坑，否则那张卡永远轮不到下一件活。
+    if (!occupiesSlot(task.verdict)) continue;
     inUse.set(task.run.gpu_hint, (inUse.get(task.run.gpu_hint) ?? 0) + 1);
   }
 
@@ -132,14 +141,18 @@ export async function dispatchQueued(
 
     try {
       const argv = JSON.parse(job.command) as string[];
+      // 起不来的原因必须留得下：stdio 全 ignore 的话，Windows 上 run 半路死掉就只剩一个 starting。
+      const wrapperLog = wrapperLogPath(job.name, job.id);
+      const fd = openSync(wrapperLog, "a");
       const child = Bun.spawn(
         selfCommand(["run", "--name", job.name, "--gpu", String(assignment.gpu), "--job", job.id, "--", ...argv]),
         {
           cwd: job.cwd,
           env: { ...(process.env as Record<string, string>), GPULEASE_HOME: stateDir() },
-          stdio: ["ignore", "ignore", "ignore"],
+          stdio: ["ignore", fd, fd],
         },
       );
+      closeSync(fd);
       try {
         child.unref();
       } catch {
