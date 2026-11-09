@@ -88,3 +88,35 @@ function mk(task: TaskView, kind: AlertKind, at: number): Alert {
 export function formatAlert(alert: Alert): string {
   return `【${ALERT_TITLE[alert.kind]}】${alert.message}`;
 }
+
+/** 同一条任务同一种毛病，10 分钟内只吵一次；判断在反复横跳时别刷屏。 */
+export const ALERT_COOLDOWN_MS = 10 * 60_000;
+
+export type CooldownState = Record<string, number>;
+
+/**
+ * 冷却：key 是「任务 + 判定」，冷却期内同样的告警不再发出。
+ * 恢复不压（恢复正是人想看到的那条），但记时间，避免它自己也反复播。
+ */
+export function dueAlerts(
+  alerts: Alert[],
+  last: CooldownState,
+  at = Date.now(),
+  cooldownMs = ALERT_COOLDOWN_MS,
+): { due: Alert[]; next: CooldownState } {
+  const next: CooldownState = { ...last };
+  const due: Alert[] = [];
+  for (const alert of alerts) {
+    const key = `${alert.run_id}:${alert.kind}`;
+    const sentAt = next[key];
+    if (sentAt !== undefined && at - sentAt < cooldownMs && alert.kind !== "recovered") continue;
+    next[key] = at;
+    due.push(alert);
+  }
+  // 只留还在冷却窗口附近的条目，别让状态文件无限长。
+  const pruned: CooldownState = {};
+  for (const [key, sentAt] of Object.entries(next)) {
+    if (at - sentAt < cooldownMs * 6) pruned[key] = sentAt;
+  }
+  return { due, next: pruned };
+}

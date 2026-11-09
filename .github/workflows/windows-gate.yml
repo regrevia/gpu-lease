@@ -266,8 +266,8 @@ jobs:
           & $exe submit --name q-wait --need-vram 20000 -- cmd /c echo never
           if ($LASTEXITCODE -ne 0) { throw "submit q-wait exited $LASTEXITCODE" }
 
-          & $exe daemon --once --quiet | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "daemon --once exited $LASTEXITCODE" }
+          # 值班进程要真常驻：`--once` 会立刻退出，Windows 上它刚起的 run 可能跟着被收走。
+          $daemon = Start-Process -FilePath $exe -ArgumentList @('daemon', '--interval', '1000', '--quiet') -PassThru -WindowStyle Hidden
 
           function Get-Queue {
             return ((& $exe queue --json 2>&1 | Out-String) | ConvertFrom-Json)
@@ -293,6 +293,7 @@ jobs:
             throw "the queued command never actually ran (no queue-ran in logs)"
           }
           Write-Host "queue: queued command really ran, run_id=$($fit.run_id)"
+          if (-not $daemon.HasExited) { Stop-Process -Id $daemon.Id -Force }
 
           Remove-Item Env:GPULEASE_SMI -ErrorAction SilentlyContinue
           Remove-Item Env:GPULEASE_SMI_SCENARIO -ErrorAction SilentlyContinue

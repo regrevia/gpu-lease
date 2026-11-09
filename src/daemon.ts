@@ -4,7 +4,7 @@
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ALERT_TITLE, formatAlert, planAlerts } from "./alerts";
+import { ALERT_TITLE, dueAlerts, formatAlert, planAlerts, type CooldownState } from "./alerts";
 import { postWebhook } from "./notify";
 import { stateDir } from "./paths";
 import { VERSION } from "./doctor";
@@ -59,13 +59,40 @@ export function daemonAlive(now = Date.now()): boolean {
  * 把排队里的活分到卡上并真的起。只在卡可用时动；分不进去就把"为什么在等"写回队列，
  * 让人在 `gpulease queue` 里看到的是原因，不是干等。
  */
+function cooldownPath(): string {
+  return join(stateDir(), "alert-cooldown.json");
+}
+
+function readCooldown(): CooldownState {
+  try {
+    const raw = readFileSync(cooldownPath(), "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as CooldownState) : {};
+  } catch {
+    // 没有或坏了都当作"从没吵过"，宁可多提醒一次也不静默。
+    return {};
+  }
+}
+
+function writeCooldown(next: CooldownState): void {
+  try {
+    mkdirSync(stateDir(), { recursive: true });
+    writeFileSync(cooldownPath(), JSON.stringify(next));
+  } catch {
+    /* 记不住就算了，不影响值班 */
+  }
+}
+
 export async function dispatchQueued(
   state: PanelState,
   opts: { dryRun?: boolean } = {},
 ): Promise<string[]> {
   const db = openStore();
   const jobs = queuedJobs(db);
-  if (!jobs.length) return [];
+  if (!jobs.length) {
+    db.close();
+    return [];
+  }
 
   const cards: Card[] = state.gpus.map((gpu) => ({
     index: gpu.index,
@@ -136,7 +163,10 @@ export async function tick(
   const db = openStore();
   const state = await buildState({ includeEnded: false });
   const known = readVerdicts(db) as Map<string, string>;
-  const alerts = planAlerts(known as never, state.tasks);
+  const planned = planAlerts(known as never, state.tasks);
+  // 判定反复横跳时同一条毛病 10 分钟内只吵一次；冷却记在磁盘上，重启不重播。
+  const cooled = dueAlerts(planned, readCooldown());
+  const alerts = cooled.due;
   const errors: string[] = [];
 
   for (const alert of alerts) {
@@ -159,6 +189,7 @@ export async function tick(
     }
   }
 
+  writeCooldown(cooled.next);
   writeVerdicts(
     db,
     state.tasks.map((t) => ({ run_id: t.run.id, verdict: t.verdict })),
@@ -170,6 +201,8 @@ export async function tick(
   }
 
   writeBeat(state.tasks.length, Boolean(opts.webhook), errors[0] ?? null);
+  // Windows 上文件被谁捏着就删不掉：每轮用完就关，别让 long-running 值班把 db 攥一辈子。
+  db.close();
   return { alerts: alerts.length, tasks: state.tasks.length, errors };
 }
 

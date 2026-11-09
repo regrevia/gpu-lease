@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatAlert, planAlerts } from "../alerts";
+import { formatAlert, planAlerts, dueAlerts } from "../alerts";
 import type { TaskView } from "../state";
 import type { Verdict } from "../types";
 
@@ -69,4 +69,38 @@ describe("什么时候该吵醒人", () => {
     expect(line).toContain("【任务卡住】");
     expect(line).toContain("「训练 SDXL LoRA」");
   });
+});
+
+test("同一条毛病 10 分钟内只吵一次，过了窗口再吵", () => {
+  const alert = (at: number) =>
+    ({ run_id: "r1", name: "训练", kind: "stalled" as const, message: "卡住了", at });
+  const t0 = 1_700_000_000_000;
+
+  const first = dueAlerts([alert(t0)], {}, t0);
+  expect(first.due.length).toBe(1);
+
+  // 3 分钟后同一件事又抖了一次：压掉
+  const second = dueAlerts([alert(t0 + 3 * 60_000)], first.next, t0 + 3 * 60_000);
+  expect(second.due.length).toBe(0);
+
+  // 过了 10 分钟：该说
+  const later = t0 + 11 * 60_000;
+  const third = dueAlerts([alert(later)], second.next, later);
+  expect(third.due.length).toBe(1);
+
+  // 同一任务换一种毛病：不受另一种的冷却影响
+  const other = dueAlerts(
+    [{ run_id: "r1", name: "训练", kind: "failed", message: "挂了", at: t0 + 60_000 }],
+    third.next,
+    t0 + 60_000,
+  );
+  expect(other.due.length).toBe(1);
+
+  // 恢复不压，哪怕同一判定刚吵过
+  const rec = dueAlerts(
+    [{ run_id: "r1", name: "训练", kind: "recovered", message: "好了", at: t0 + 120_000 }],
+    other.next,
+    t0 + 120_000,
+  );
+  expect(rec.due.length).toBe(1);
 });
