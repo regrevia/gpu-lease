@@ -1,14 +1,14 @@
 {
   "name": "gpulease",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
-  "description": "显卡值班员 — 告诉你哪张卡在跑哪个任务、还正常吗",
+  "description": "Windows 上的显卡值班员：哪张卡在跑哪个任务，还正常吗",
   "license": "MIT",
   "bin": { "gpulease": "src/main.ts" },
   "scripts": {
     "dev": "bun run src/main.ts",
-    "build": "bun build --compile --target=bun-windows-x64 --outfile dist/gpulease.exe src/main.ts",
-    "test": "bun test"
-  },
-  "devDependencies": { "@types/bun": "latest" }
+    "test": "bun test",
+    "build": "bun build --compile --minify --target=bun-windows-x64 --outfile dist/gpulease.exe src/main.ts",
+    "build:local": "bun build --compile --minify --outfile dist/gpulease src/main.ts"
+  }
 }

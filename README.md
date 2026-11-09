@@ -6,10 +6,13 @@ gpulease 就是替你看住这张卡的值班员。
 
 ```
 $ gpulease ls
-训练 SDXL LoRA   卡0  62%  epoch 7/30   预计 2h10m   正常
-ComfyUI 批量     卡1  88%  214/500 张   预计 28m     正常
-下载 FLUX 模型   卡0  --   停滞 15 分钟  显存仍占满  ⚠
+正常  2026/11/9 18:59  「训练 SDXL LoRA」在跑，正常
+正常  2026/11/9 18:41  「ComfyUI 批量」在跑，已有 4 分钟没新输出，仍在跑
+卡住  2026/11/9 17:12  「下载 FLUX 模型」已经 15 分钟没有输出了，可能卡住
+失败  2026/11/9 16:03  「测评」退出码 137，失败了
 ```
+
+（这是 v0.1 的真实输出形状：没有百分比，因为进度适配器还没做；宁可不给数字，不给假数字。）
 
 ## 为什么做这个
 
@@ -31,17 +34,22 @@ ComfyUI 批量     卡1  88%  214/500 张   预计 28m     正常
 
 **它不是仪表盘。** 仪表盘回答"用了多少"，它回答"谁在跑、还活着吗、要不要管"。
 
-## 形态
+## 用法
 
-一个 exe：双击 → 托盘 + 本地看板（`127.0.0.1:7788`），同时兼作 CLI。
+一个 exe，六条命令。托管启动这一条是根：只有我们起的任务，我们才敢说归属。
 
-```bash
+```powershell
 gpulease run --name "训练 SDXL LoRA" --gpu 0 -- python train.py
-gpulease attach 12345 --name "生图批量"
-gpulease ls / status / logs <id> / stop <id> / doctor
+gpulease run --name "ComfyUI" --gpu 1 -- python main.py --port 8188
+gpulease ls                # 一行一个任务，人话结论
+gpulease watch             # 终端面板，2 秒刷新，q 退出
+gpulease serve             # 浏览器面板 http://127.0.0.1:7788
+gpulease doctor            # 自检；--bundle 出诊断包
 ```
 
-单文件、无 Node 依赖、常驻 < 40 MB。[技术决策](docs/03-architecture.md)
+`run` 会把子进程的 stdout/stderr 同时写进日志（`<状态目录>\logs\<run id>.log`）和终端，退出码原样传回，所以它可以直接替换你原来的启动命令。
+
+单文件、无运行时依赖、不发网络请求。[技术决策](docs/03-architecture.md) · [第三方与许可证](docs/THIRD-PARTY.md)
 
 ## 只做 Windows
 
@@ -51,13 +59,11 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 
 ## Windows 验收
 
-产物不是"我们机器上编译过"，而是在真的 Windows 上跑过才算数。自托管节点 `regrevia-gpu-lease`（Windows 11，管理员服务）承接 `.github/workflows/windows-gate.yml`：编译单文件 exe → 摘掉 PATH 里的 Node 再跑 → `doctor --json` / `ls --json` 必须可解析 → `--fake-gpu` 验解析与规则 → 出 SHA256 → tag 才发 Release。
+产物不是"我们机器上编译过"，而是在真的 Windows 上跑过才算数。自托管节点 `regrevia-gpu-lease`（Windows 11，管理员服务）承接 `.github/workflows/windows-gate.yml`：编译单文件 exe → 摘掉 PATH 里的 Node 再跑 → `doctor --json` 必须诚实报告无卡 → `run` 真起子进程且 stdout 被转发 → `ls --json` 能查到这条记录且判定为正常 → 子进程退出码 7 原样传回 → 出 SHA256 → tag 才发 Release。
 
-第一次真实跑通（2026-11-09）：[windows-gate #42588508102](https://github.com/regrevia/gpu-lease/actions/runs/42588508102) 绿——Bun 1.4.4 编译出单文件 exe，摘掉 PATH 里的 Node 后 `--version` / `doctor --json` / `ls --json` / `--fake-gpu` 全部通过，`smoke=ok`。
+那条节点**没有 NVIDIA 显卡**，所以它验的是打包、CLI/JSON 契约、托管启动、进程归属、无卡降级；显卡数字与多卡行为要靠真机 `gpulease doctor --bundle` 的输出补。细节见 [Windows 真机验收](docs/05-windows-verification.md)。
 
-实测体积：**exe 109.9 MB，zip 52.2 MB**（运行时占绝大部分，`--minify` 无差别）。比调研阶段的官方口径大得多，按这个数字设计下载与首启体验。
-
-这条节点**没有 NVIDIA 显卡**，所以它验的是打包、CLI、JSON 契约、无卡降级；有卡的判断要靠真机 `gpulease doctor --dump` 的输出来补。细节见 [Windows 真机验收](docs/05-windows-verification.md)。
+实测体积：**exe 109.9 MB，zip 52.2 MB**（Bun 运行时占绝大部分，`--minify` 无差别）。比调研阶段的官方口径大得多，按这个数字设计下载与首启体验。
 
 ## 文档
 
@@ -67,14 +73,17 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 | [技术架构](docs/03-architecture.md) | 模块、采集、归属、适配器、规则引擎、API、打包 |
 | [竞品分析](docs/research/competitors.md) | 11 个同类项目 + Windows 桌面工具 + 空白在哪 |
 | [Windows 与打包](docs/research/windows-and-packaging.md) | WDDM 显存限制、TDR/Xid、DCGM、eGPU、exe 方案 |
+| [面板与范围](docs/06-ui-and-scope.md) | 哪些能复用、为什么只做 Windows、六条专业标准 |
+| [第三方与许可证](docs/THIRD-PARTY.md) | 参考过什么、GPL 项目为什么只看 |
+| [变更记录](CHANGELOG.md) | 每个版本加了什么、边界在哪 |
 
 ## v0.1 范围
 
-只做：采集 + 托管启动 + 任务列表 + 一条自然语言摘要 + 一条告警。
-不做：自动杀、自动调度、多机、历史曲线。
+已做：采集 + 托管启动 + 归属 + 判定 + `ls` / `watch` / `serve` 三个入口 + `doctor` 自检 + 诊断包。
+没做：进度百分比、托盘、告警推送（ntfy/气泡）、历史曲线、自动杀、自动调度、多机。这些按 [路线](docs/02-product-design.md) 排。
 
 **验收标准：第一眼能看出"原来这是我的训练在跑"。**
 
 ## 状态
 
-调研、竞品分析、产品设计、架构、Windows 打包与真机验收管线完成，Windows 上检出可运行 exe。产品代码未开工（等你点头）。MIT。
+v0.1.0 代码完成：`run` / `ls` / `watch` / `serve` / `doctor` 五个入口在本机 macOS 与 Windows 自托管节点上都跑过，`bun test` 24 条绿，Windows 门禁验到"摘掉 Node 也能起子进程并把退出码传回来"。显卡数字（多卡、eGPU 断联）还需要有卡的机器验。MIT。
