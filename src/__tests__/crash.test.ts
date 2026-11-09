@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeCrashLog } from "../daemon";
@@ -30,8 +30,15 @@ describe("值班崩溃现场", () => {
     }
   });
 
-  test("目录不可写时返回 null，不把崩溃变成第二个崩溃", () => {
-    process.env.GPULEASE_HOME = "/dev/null/nope";
-    expect(writeCrashLog(new Error("x"), "测试")).toBeNull();
+  test("目录建不出来时返回 null，不把崩溃变成第二个崩溃", () => {
+    // 拿一个普通文件当父目录：两个平台上 mkdir 都会失败，崩溃记录只能放弃。
+    const blocker = join(tmpdir(), `gpulease-blocker-${process.pid}`);
+    writeFileSync(blocker, "not a directory");
+    try {
+      process.env.GPULEASE_HOME = join(blocker, "child");
+      expect(writeCrashLog(new Error("x"), "测试")).toBeNull();
+    } finally {
+      rmSync(blocker, { force: true });
+    }
   });
 });

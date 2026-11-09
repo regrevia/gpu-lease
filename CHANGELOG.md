@@ -28,6 +28,10 @@
 - 值班起的每个 run 都把输出落到 `logs/wrapper-<任务>-<队列号>.log`，起不来的原因留得住现场。
 - 告警判据（`src/alerts.ts`，纯函数）：`failed` / `lost` / `stalled` / `suspect` 才打扰；`slow` 只是趋势不算事件；首次见到就不对劲也报；重启不会把"正常"重播一遍。
 
+### 发布
+
+- tag `v0.3.0` 的 tag 运行 `42682120449`：`publish release` 成功，`gpulease-windows-x64.zip` 54,741,095 字节（52.2 MB），`gpulease.exe` 115,320,320 字节（110 MB），`SHA256SUMS.txt` 172 字节。
+
 ### 验证
 
 - 门禁 run `42679530072`（`3bb22289`）`conclusion=success`，第 1–16 步全过（15 只在 tag 上跑、17 是空仓库兜底）：队列放卡、`q-wait` 带理由等待、`q-fit` 真跑完并回写 `run_id`，进度仍读到 `42%`。细节见 `docs/05-windows-verification.md`。
