@@ -170,8 +170,10 @@ describe("samples 表", () => {
     try {
       db = openStore(join(dir, "gpulease.db"));
       const gpus = [{ index: 0, util: 50, vram_used_mb: 1000, vram_total_mb: 2000 }];
-      const t0 = 1_700_000_000_000;
-      expect(recordSamples(db, gpus, t0, false)).toBe(true);
+      // 模块级的节流时间戳是跨测试留着的，这里先 force 一次立个基准，
+      // 否则前面某个测试写过的"现在"会把这次写入误判成节流。
+      const t0 = Date.now() + 60_000;
+      expect(recordSamples(db, gpus, t0, true)).toBe(true);
       expect(recordSamples(db, gpus, t0 + 1000, false)).toBe(false);
       expect(recordSamples(db, gpus, t0 + SAMPLE_INTERVAL_MS, false)).toBe(true);
       expect(listSamples(db, 0)).toHaveLength(2);
