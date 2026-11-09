@@ -15,6 +15,19 @@ import { SAMPLE_INTERVAL_MS, SAMPLE_RETENTION_MS, recordSamples } from "../daemo
 
 const tmp = () => mkdtempSync(join(tmpdir(), "gpulease-history-"));
 
+// Windows 上 sqlite 的 WAL 句柄偶尔比 close() 晚一点放手：删不掉就等一下再删，
+// 让"清理失败"别把一条本来通过的断言变成红的。
+function rmTemp(dir: string): void {
+  for (let i = 0; i < 10; i++) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch {
+      Bun.sleepSync(100);
+    }
+  }
+}
+
 function sample(at: number, gpu: number, util: number | null, used: number | null, total = 24564): Sample {
   return { at, gpu, util, used_mb: used, total_mb: total };
 }
@@ -134,8 +147,9 @@ describe("renderHistory", () => {
 describe("samples 表", () => {
   test("写入、按卡读、按时间裁掉", () => {
     const dir = tmp();
+    let db: ReturnType<typeof openStore> | null = null;
     try {
-      const db = openStore(join(dir, "gpulease.db"));
+      db = openStore(join(dir, "gpulease.db"));
       const now = Date.now();
       insertSamples(db, [sample(now - 1000, 0, 10, 100), sample(now - 900, 1, 20, 200)]);
       expect(listSamples(db, now - 5000)).toHaveLength(2);
@@ -144,16 +158,17 @@ describe("samples 表", () => {
       expect(listSamples(db, now - 5000, 0).map((s) => s.util)).toEqual([10, 30]);
       expect(pruneSamples(db, now - 950)).toBe(1);
       expect(listSamples(db, 0)).toHaveLength(2);
-      db.close();
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      db?.close();
+      rmTemp(dir);
     }
   });
 
   test("recordSamples 按 15 秒节流，force 时照写", () => {
     const dir = tmp();
+    let db: ReturnType<typeof openStore> | null = null;
     try {
-      const db = openStore(join(dir, "gpulease.db"));
+      db = openStore(join(dir, "gpulease.db"));
       const gpus = [{ index: 0, util: 50, vram_used_mb: 1000, vram_total_mb: 2000 }];
       const t0 = 1_700_000_000_000;
       expect(recordSamples(db, gpus, t0, false)).toBe(true);
@@ -163,9 +178,9 @@ describe("samples 表", () => {
       // 超过保留期的那一轮会顺手清旧行
       expect(recordSamples(db, gpus, t0 + SAMPLE_RETENTION_MS + 3_600_000, true)).toBe(true);
       expect(listSamples(db, 0)).toHaveLength(1);
-      db.close();
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      db?.close();
+      rmTemp(dir);
     }
   });
 });

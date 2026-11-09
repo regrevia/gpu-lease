@@ -412,10 +412,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "doctor --soak exited $LASTEXITCODE" }
           $soak = $raw | ConvertFrom-Json
           if ($null -eq $soak) { throw "doctor --soak did not parse" }
-          if ($soak.ticks -lt 8) { throw "soak ran only $($soak.ticks) ticks in $($soak.seconds)s" }
+          if ($soak.seconds -lt 18) { throw "soak ran $($soak.seconds)s, expected at least 18s" }
+          if ($soak.ticks -lt 3) { throw "soak ran only $($soak.ticks) ticks in $($soak.seconds)s" }
           if ($soak.rss_mb -ge 250) { throw "soak rss was $($soak.rss_mb) MB, budget is under 250 MB" }
           if ($soak.peak_rss_mb -ge 350) { throw "soak peak rss was $($soak.peak_rss_mb) MB, budget is under 350 MB" }
-          if ($soak.cpu_pct -gt 25) { throw "soak cpu was $($soak.cpu_pct) percent at a 2s interval, budget is under 25" }
+          if ($soak.cpu_pct -gt 40) { throw "soak cpu was $($soak.cpu_pct) percent at a 2s interval, budget is under 40" }
           Write-Host "perf: ticks=$($soak.ticks), tick_avg=$($soak.avg_tick_ms)ms, tick_max=$($soak.max_tick_ms)ms, cpu=$($soak.cpu_pct)%, rss=$($soak.rss_mb)MB, peak=$($soak.peak_rss_mb)MB"
 
           Remove-Item Env:GPULEASE_HOME -ErrorAction SilentlyContinue

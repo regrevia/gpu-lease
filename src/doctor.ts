@@ -88,7 +88,8 @@ export async function soak(opts: { seconds?: number; intervalMs?: number } = {})
   let workMs = 0;
   let peakRss = process.memoryUsage().rss;
   let startRss: number | null = null;
-  while (Date.now() - t0 < seconds * 1000) {
+  // 至少跑两轮：慢机器上一轮采集可能就吃掉整个窗口，只跑一轮的数字什么都说明不了。
+  while (Date.now() - t0 < seconds * 1000 || ticks < 2) {
     const tickStart = Date.now();
     await buildState({ includeEnded: false });
     const dt = Date.now() - tickStart;

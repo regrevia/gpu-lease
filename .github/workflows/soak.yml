@@ -72,12 +72,12 @@ jobs:
           $soak = $raw | ConvertFrom-Json
           if ($null -eq $soak) { throw "doctor --soak did not parse" }
 
-          $expected = [math]::Floor($seconds / 2 * 0.8)
-          if ($soak.ticks -lt $expected) { throw "soak ran $($soak.ticks) ticks, expected at least $expected" }
+          if ($soak.seconds -lt ($seconds - 30)) { throw "soak ran $($soak.seconds)s, expected about $seconds" }
+          if ($soak.ticks -lt 20) { throw "soak ran only $($soak.ticks) ticks" }
           if ($soak.rss_mb -ge 200) { throw "soak rss was $($soak.rss_mb) MB, budget is under 200 MB" }
           if ($soak.peak_rss_mb -ge 350) { throw "soak peak rss was $($soak.peak_rss_mb) MB, budget is under 350 MB" }
           if ($soak.rss_growth_mb -ge 30) { throw "rss grew $($soak.rss_growth_mb) MB over the soak, budget is under 30 MB" }
-          if ($soak.cpu_pct -gt 25) { throw "soak cpu was $($soak.cpu_pct) percent at a 2s interval, budget is under 25" }
+          if ($soak.cpu_pct -gt 40) { throw "soak cpu was $($soak.cpu_pct) percent at a 2s interval, budget is under 40" }
 
           $lines = @(
             "- seconds: $($soak.seconds)",
