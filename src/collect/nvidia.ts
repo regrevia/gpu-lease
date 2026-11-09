@@ -3,7 +3,7 @@
 // 而 nvidia-smi 是驱动自带的、永远和驱动同版本。
 
 import type { Gpu, GpuProc } from "../types";
-import { exec } from "./exec";
+import { exec, type ExecResult } from "./exec";
 
 const GPU_FIELDS =
   "index,uuid,name,driver_version,memory.total,memory.used,utilization.gpu,temperature.gpu,power.draw";
@@ -86,11 +86,17 @@ export function parseProcs(stdout: string): GpuProc[] {
   return procs;
 }
 
+// 服务账号的 PATH 可能没有 NVIDIA 目录，所以 PATH 找不到时再试驱动装的默认位置。
+const SMI_FALLBACK = `${process.env.ProgramFiles ?? "C:\\Program Files"}\\NVIDIA Corporation\\NVSMI\\nvidia-smi.exe`;
+
+async function runSmi(args: string[], timeoutMs: number): Promise<ExecResult> {
+  const first = await exec(["nvidia-smi", ...args], { timeoutMs });
+  if (first.code !== -1) return first;
+  return exec([SMI_FALLBACK, ...args], { timeoutMs });
+}
+
 export async function snapshot(timeoutMs = 3000): Promise<NvidiaSnapshot> {
-  const gpuRes = await exec(
-    ["nvidia-smi", `--query-gpu=${GPU_FIELDS}`, "--format=csv,noheader,nounits"],
-    { timeoutMs },
-  );
+  const gpuRes = await runSmi([`--query-gpu=${GPU_FIELDS}`, "--format=csv,noheader,nounits"], timeoutMs);
 
   if (gpuRes.timedOut) {
     return { status: "error", detail: "nvidia-smi 超时（可能是外接卡断联）", gpus: [], procs: [] };
@@ -107,9 +113,9 @@ export async function snapshot(timeoutMs = 3000): Promise<NvidiaSnapshot> {
   }
 
   const gpus = parseGpus(gpuRes.stdout);
-  const procRes = await exec(
-    ["nvidia-smi", "--query-compute-apps=pid,process_name,used_memory", "--format=csv,noheader,nounits"],
-    { timeoutMs },
+  const procRes = await runSmi(
+    ["--query-compute-apps=pid,process_name,used_memory", "--format=csv,noheader,nounits"],
+    timeoutMs,
   );
   const procs = procRes.code === 0 ? parseProcs(procRes.stdout) : [];
   return { status: "present", detail: null, gpus, procs };

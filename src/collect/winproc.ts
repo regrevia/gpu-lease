@@ -11,6 +11,12 @@ export type ProcessInfo = {
   command: string | null;
 };
 
+// 服务账号（NetworkService）跑起来时 PATH 未必和交互式登录一样，
+// 所以系统工具一律用绝对路径找，不赌 PATH。
+const SYS_ROOT = process.env.SystemRoot || process.env.windir || "C:\\Windows";
+const POWERSHELL = `${SYS_ROOT}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+const TASKLIST = `${SYS_ROOT}\\System32\\tasklist.exe`;
+
 let cache: { at: number; procs: ProcessInfo[]; degraded: string | null } | null = null;
 const CACHE_MS = 4000;
 
@@ -61,9 +67,10 @@ export async function listProcesses(opts: { refresh?: boolean; timeoutMs?: numbe
   }
 
   const timeoutMs = opts.timeoutMs ?? 8000;
+  const started = Date.now();
   const ps = await exec(
     [
-      "powershell",
+      POWERSHELL,
       "-NoProfile",
       "-NonInteractive",
       "-Command",
@@ -71,6 +78,7 @@ export async function listProcesses(opts: { refresh?: boolean; timeoutMs?: numbe
     ],
     { timeoutMs },
   );
+  const cimReason = why(ps, timeoutMs, Date.now() - started);
 
   let procs: ProcessInfo[] = [];
   let degraded: string | null = null;
@@ -79,13 +87,27 @@ export async function listProcesses(opts: { refresh?: boolean; timeoutMs?: numbe
     procs = parseCimJson(ps.stdout);
   }
   if (procs.length === 0) {
-    const tl = await exec(["tasklist", "/FO", "CSV", "/NH"], { timeoutMs: 5000 });
+    const tlStarted = Date.now();
+    const tl = await exec([TASKLIST, "/FO", "CSV", "/NH"], { timeoutMs: 5000 });
     procs = tl.code === 0 ? parseTasklist(tl.stdout) : [];
-    degraded = procs.length ? "命令行不可用（CIM 失败，只有进程名）" : "进程层不可用（CIM 与 tasklist 都失败）";
+    degraded = procs.length
+      ? `命令行不可用（CIM ${cimReason}，只有进程名）`
+      : `进程层不可用（CIM ${cimReason}；tasklist ${why(tl, 5000, Date.now() - tlStarted)}）`;
   }
 
   cache = { at: Date.now(), procs, degraded };
   return { procs, degraded };
+}
+
+/** 说清一次采集为什么没成：超时 / 退出码 / spawn 都没起来。 */
+function why(r: { code: number; stdout: string; stderr: string; timedOut: boolean }, timeoutMs: number, tookMs: number): string {
+  if (r.timedOut) return `超时 ${Math.round(timeoutMs / 1000)}s`;
+  if (r.code === -1) {
+    const e = (r.stderr || r.stdout).trim().split(/\r?\n/)[0] ?? "";
+    return `起不来${e ? `：${e.slice(0, 120)}` : ""}`;
+  }
+  const e = (r.stderr || r.stdout).trim().split(/\r?\n/)[0] ?? "";
+  return `退出码 ${r.code}${e ? `：${e.slice(0, 120)}` : ""}（${tookMs}ms）`;
 }
 
 export function isAlive(pid: number): boolean {

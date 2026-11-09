@@ -142,6 +142,7 @@ jobs:
           $docObj = $doc | ConvertFrom-Json
           if ($docObj.nvidia_smi -ne "absent") { throw "expected nvidia_smi=absent on a GPU-less node, got $($docObj.nvidia_smi)" }
           if (-not $docObj.notes -or $docObj.notes.Count -lt 1) { throw "degraded report must say why" }
+          Write-Host "process_layer=$($docObj.wmi) detail=$($docObj.wmi_detail)"
 
           # The run wrapper is the product: spawn a real child, record it, pass the exit code through.
           $runOut = & $exe run --name smoke -- powershell -NoProfile -Command "Write-Output hello-from-child" 2>&1 | Out-String
@@ -159,7 +160,11 @@ jobs:
 
           # A failing child must be reported, not swallowed.
           & $exe run --name smoke-fail -- powershell -NoProfile -Command "exit 7" 2>&1 | Out-Null
-          if ($LASTEXITCODE -ne 7) { throw "child exit code 7 was not passed through (got $LASTEXITCODE)" }
+          $failCode = $LASTEXITCODE
+          if ($failCode -ne 7) { throw "child exit code 7 was not passed through (got $failCode)" }
+
+          # 让这一步自己的退出码干净：runner 会把最后一个 native 退出码当步骤结果。
+          $global:LASTEXITCODE = 0
           Write-Host "smoke=ok"
 
       - name: checksum
