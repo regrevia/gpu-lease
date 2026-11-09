@@ -50,6 +50,13 @@ export async function exec(
   }
 
   let timedOut = false;
+  let hardStop: ReturnType<typeof setTimeout> | undefined;
+  let settle: (r: ExecResult) => void = () => {};
+  // 超时之后不再无限等回收：Windows 上杀掉子进程、把管道读干净有时要十几秒，
+  // 那段时间里调用方（值一轮采集）以为监控挂了。给一秒宽限，到点就带着「超时」返回。
+  const out = new Promise<ExecResult>((resolve) => {
+    settle = resolve;
+  });
   const timer = setTimeout(() => {
     timedOut = true;
     try {
@@ -57,19 +64,27 @@ export async function exec(
     } catch {
       /* already gone */
     }
+    hardStop = setTimeout(() => {
+      settle({ code: -1, stdout: "", stderr: "超时后未能回收子进程", timedOut: true, ms: Date.now() - started });
+    }, 1000);
   }, timeoutMs);
 
-  try {
+  const full = (async (): Promise<ExecResult> => {
     const [stdout, stderr, code] = await Promise.all([
       drain(proc.stdout as ReadableStream<Uint8Array>),
       drain(proc.stderr as ReadableStream<Uint8Array>),
       proc.exited,
     ]);
     return { code, stdout, stderr, timedOut, ms: Date.now() - started };
-  } catch (err) {
+  })().catch((err): ExecResult => {
     return { code: -1, stdout: "", stderr: String(err), timedOut, ms: Date.now() - started };
+  });
+
+  try {
+    return await Promise.race([full, out]);
   } finally {
     clearTimeout(timer);
+    if (hardStop) clearTimeout(hardStop);
   }
 }
 
