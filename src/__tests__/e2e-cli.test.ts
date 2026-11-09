@@ -45,14 +45,10 @@ async function cli(args: string[], scenario = "two-gpu", env: Record<string, str
 }
 
 describe("CLI 端到端（假 GPU）", () => {
-  test("托管起一个任务后，ls 能按名字读回它", async () => {
-    // run 是阻塞的（它托管子进程），所以这里不 await，等它把任务记下来再去读。
-    const runner = Bun.spawn([process.execPath, MAIN, "run", "--name", "假训练", "--", process.execPath, "-e", "await Bun.sleep(8000)"], {
-      env: baseEnv("two-gpu"),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    await Bun.sleep(1500);
+  test("托管起一个任务后，ls 能按名字读回它，并判为正常完成", async () => {
+    // 先真起一个子进程再等它结束：这样读回的是落盘记录，不受"读进程树要几秒"的影响。
+    const started = await cli(["run", "--name", "假训练", "--", process.execPath, "-e", "await Bun.sleep(300)"]);
+    expect(started.code).toBe(0);
 
     const ls = await cli(["ls", "--json"]);
     expect(ls.code).toBe(0);
@@ -61,14 +57,10 @@ describe("CLI 端到端（假 GPU）", () => {
     expect(state.nvidia).toBe("present");
     const task = state.tasks.find((t: { run: { name: string } }) => t.run.name === "假训练");
     expect(task).toBeTruthy();
-
-    expect(task.alive).toBe(true);
-    // 有命令行归属时判 ok；进程层降级（非 Windows / 无 WMI）时判定会更保守，不硬要求。
-    if (process.platform === "win32") expect(task.verdict).toBe("ok");
-
-    runner.kill();
-    await runner.exited;
-  }, 30000);
+    expect(task.run.exit_code).toBe(0);
+    expect(task.alive).toBe(false);
+    expect(task.verdict).toBe("ok");
+  }, 60000);
 
   test("ls 的人类可读输出里带卡的名字和任务的名字", async () => {
     const ls = await cli(["ls", "--no-color"]);
