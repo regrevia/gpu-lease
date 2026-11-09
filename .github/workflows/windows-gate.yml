@@ -282,6 +282,9 @@ jobs:
             $fit = Get-Queue | Where-Object { $_.name -eq "q-fit" }
           }
           if ($fit.gpu -ne 0) { throw "q-fit must land on card 0 (the only card with enough free vram), got $($fit.gpu)" }
+          # 同一轮里值班才会给放不下的活写理由，重新读一次，别拿排到卡之前的快照断言。
+          $wait = Get-Queue | Where-Object { $_.name -eq "q-wait" }
+          if ($null -eq $wait) { throw "q-wait missing from the queue" }
           if ($wait.state -ne "queued") { throw "q-wait needs 20 GB and cannot fit; state must stay queued, got $($wait.state)" }
           if ([string]::IsNullOrWhiteSpace($wait.reason)) { throw "q-wait must carry the reason it is waiting" }
           Write-Host "queue: q-fit placed on card 0, q-wait explains why it waits"
