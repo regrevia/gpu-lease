@@ -15,7 +15,7 @@
 | 3 | DCGM | 官方支持列表只有 Linux，**Windows 无官方支持** | 不依赖 DCGM，自己走 NVML |
 | 4 | eGPU 热拔 | 设备 surprise removal，句柄失效；Linux 有整机挂死实证 | 所有 GPU 调用必须带超时 + 可降级 |
 | 5 | 单 exe | Bun `--compile` 最优；Node SEA 受原生模块限制 | 用 `bun:sqlite`，禁用 better-sqlite3 |
-| 6 | CI/签名 | `windows-latest` + artifact 够用；不签名会被 SmartScreen 强拦 | 首发不签名，接受提示，留 OV/Artifact Signing 升级路径 |
+| 6 | CI/签名 | 自托管 Windows 节点 `regrevia-win` 能编译并冒烟；不签名会被 SmartScreen 强拦 | 首发不签名 + SHA256，留 OV/Artifact Signing 升级路径 |
 | 7 | 常驻开销 | 进程内 NVML ≫ 优于 `nvidia-smi --loop-ms` 子进程轮询 | 进程内 NVML，1–2s 轮询 + 事件驱动 |
 
 ---
@@ -111,7 +111,7 @@
 | 方案 | 产物大小 | 原生模块 | 双击即用 | 交叉编译 |
 |---|---|---|---|---|
 | **Node.js SEA** | ≈ `node.exe` 体积（约 70–90MB，**未实测**） | ❌ 受限严重 | ✅ | 需在 Windows 上构建 |
-| **Bun `build --compile`** | 默认 57–100MB；gzip 33MB；`--trim` 后 **14MB** | ⚠️ 可用但破坏裁剪 | ✅ | ✅ 可在 mac/Linux 出 exe |
+| **Bun `build --compile`** | **实测 Windows x64 + Bun 1.4.4：exe 109.9MB，zip 52.2MB**（`--minify` 无差别，运行时占绝大部分） | ⚠️ 可用但破坏裁剪 | ✅ | ✅ 可在 mac/Linux 出 exe |
 | **Tauri**（Rust + WebView2） | 几 MB + 依赖系统 WebView2 | ✅（走 Rust 侧） | ✅（前提有 WebView2） | ✅ |
 | **Wails**（Go + WebView2） | 官方称「小运行时」，社区报 ~15MB | ✅（走 Go 侧） | ✅（前提有 WebView2） | ✅ |
 | **Go 纯 CLI** | 5–15MB 单文件 | — | ✅（终端） | ✅ |
@@ -132,7 +132,7 @@
 一条命令出 Windows exe，且**可在 mac 上交叉编译**：`bun build --compile --target=bun-windows-x64 ./src/cli.ts --outfile gpu-lease`（会自动补 `.exe`）。
 证据：[Bun Docs — Executables / Cross-compile](https://bun.com/docs/bundler/executables)。
 
-体积有官方口径：默认可执行文件几乎全是 Bun 运行时，**gzip 后 33MB，`--trim` 后 14MB**；`--trim` 目前标为实验特性，且遇到 native addon 会 `blocked by runtime-code` 从而保留全部 API（体积回落）。
+体积口径已用真机实测替换官方说法：**Windows x64 上 exe 109.9MB、zip 后 52.2MB**（`--minify` 对体积无影响，几乎全是 Bun 运行时）。早期资料里的"33MB / `--trim` 后 14MB"不适用于当前版本，v1 的发布包按 ~52MB 下载量设计；如果这个体积不可接受，唯一实质的替代是换 Rust/Go 重写核心（~8–15MB），不在 v1 范围。
 证据：[Bun Docs — Smaller executables](https://bun.com/docs/compiler/size)；真实抱怨与量级参照：[oven-sh/bun#14546](https://github.com/oven-sh/bun/issues/14546)（1.1.30 hello world 即 57MB）、[HN 讨论](https://news.ycombinator.com/item?id=47657049)。
 
 ### Tauri / Wails
@@ -145,9 +145,9 @@
 在「低占用 + 双击即用 + 不要求装 Node」三条硬约束下它最优：
 
 1. **真单文件**，无 WebView2 前置依赖（Tauri/Wails 的隐性外部依赖，在精简 Windows 上是真实故障点）。
-2. **可在 CI 的 ubuntu-latest 上直接交叉编译出 Windows exe**，省掉 Windows runner 的排队时间（也可用 `windows-latest`，见第 6 节）。
+2. **可在 macOS/Linux 上交叉编译出 Windows exe**，但"能不能跑"必须在 Windows 节点上验（见第 6 节）。
 3. **TypeScript 直接跑**，不引入 Rust/Go 第二语言。
-4. 体积可控：14MB（`--trim`）到 57MB（默认），对本地调度器完全可接受。
+4. 体积可控：单 exe 约 110MB、zip 约 52MB，对一个常驻后台工具偏大但可接受；改用 Rust/Go 可降到 10MB 级，代价是开发成本。
 5. 风险点明确且可规避：**禁用 better-sqlite3**，改用 `bun:sqlite`（或 Node 侧 `node:sqlite` 内置模块，避免 `.node` 外置）。
 
 **若产品后续必须用原生扩展**（如 GPU FFI 绑定走 `koffi`，它本身就是 native addon）：退回 Node SEA 并把 `.node` 作为旁置文件分发 —— 那就**不再是单 exe**，需要重新和产品确认这条约束。
@@ -156,7 +156,7 @@
 
 ## 6. GitHub Actions 产 Windows exe
 
-**构建：** `runs-on: windows-latest`（GitHub 托管 runner 提供 Windows Server 镜像），产物用 `actions/upload-artifact` 上传。注意 Windows 上默认 shell 是 PowerShell，脚本里避免 bash 语法。
+**构建与验收：** 走自托管节点 `regrevia-win`（标签 `self-hosted, windows, x64, regrevia-win`），不是托管镜像——目标是证明产物在"像用户的机器"上能跑。实测细节见 `docs/05-windows-verification.md`：编译单 exe → 摘掉 PATH 里的 Node 再执行 → JSON 契约逐条 `ConvertFrom-Json` → `--fake-gpu` 验解析 → 出 SHA256。注意默认 shell 是 PowerShell；自托管上不能用需要符号链接的 action（`oven-sh/setup-bun` 在 NetworkService 下 EPERM）。
 证据：[GitHub Hosted Runners 文档](https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners)；[actions/upload-artifact](https://github.com/actions/upload-artifact)。
 
 **未签名 exe 的 SmartScreen 行为：微软官方对比表给的是「❌ Strong SmartScreen block」。** 用户首次运行会看到「Windows 已保护你的电脑」，需要点「更多信息 → 仍要运行」。
@@ -193,7 +193,7 @@
 **Windows 上的落地注意：**
 
 - `nvml.dll` 随驱动安装在 `System32`（由驱动安装器放入），Node 侧绑定需显式指向 `nvml.dll` 而非 Linux 的 `libnvidia-ml.so`。上面这个 `ts-nvml` 包**明确只支持 Linux**，Windows 需自行用 `koffi` 绑 `nvml.dll`，或找 `node-nvml` 一类绑定。
-- 用 `koffi` 意味着**必须带一个原生 addon** → 反过来影响第 5 节的打包选择（Bun 下 native addon 会让 `--trim` 失效；Node SEA 下 `.node` 无法内嵌）。
+- 用 `koffi` 意味着**必须带一个原生 addon** → 单文件 exe 直接作废（Node SEA 无法内嵌 `.node`，Bun 打包也要额外释放）。NVML 必须走 `bun:ffi` 或 `nvidia-smi` 子进程。
 - **Windows 上 NVML 的实际开销数值：未核实**（无 Windows 设备可测）。
 
 **v1 决定：** 进程内 NVML 常驻 + 1–2s 轮询；进程启停、任务提交等事件触发立即刷新；`nvidia-smi` 只作为**调试 / 兜底路径**保留（带超时），不进热路径。

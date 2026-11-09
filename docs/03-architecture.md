@@ -110,14 +110,14 @@ GET  /api/doctor           自检
 
 ## 9. 打包（已定）
 
-**`bun build --compile --target=bun-windows-x64`，产物单 exe。** 官方口径体积 gzip 33 MB、`--trim` 后 14 MB 左右，可在 macOS/Linux 上交叉编译出 Windows 产物。
+**`bun build --compile --target=bun-windows-x64`，产物单 exe。** 真机实测：exe **109.9 MB**、zip **52.2 MB**（Bun 1.4.4，`--minify` 对体积无影响）。可在 macOS/Linux 交叉编译，但必须到 Windows 上冒烟。
 
 理由：Node SEA 明确不支持从 VFS 加载 `.node`，任何原生依赖都进不去；Tauri/Wails 体积最小但要引入第二语言 + 依赖目标机 WebView2，对一个只会画一屏的面板是过度工程。
 
 三条硬约束据此落定：
 1. 不引入任何 `.node` 依赖（SQLite 用内置，NVML 用 `bun:ffi` 而不是 npm 绑定包）。
 2. 首发**不签名**：GitHub Releases + SHA256，接受首次运行的 SmartScreen 提示（微软文档定性为 "Strong SmartScreen block"）。有用户量后再走开源免费的 SignPath Foundation，或 OV 证书（$150–300/年）。
-3. CI：`windows-latest` 上 build + `actions/upload-artifact`，tag 触发发布到 Releases。
+3. CI：自托管 `regrevia-win` 节点（`regrevia-gpu-lease` 实例）上 `windows-gate.yml` 做 build + 无 Node 冒烟 + SHA256，tag 触发发布到 Releases。**不接 `pull_request`**。
 
 ## 10. 测试策略
 
