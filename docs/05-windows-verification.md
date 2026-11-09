@@ -125,3 +125,15 @@
 - 收尾：`finally` 写 stop 文件让子进程自己退，再 `Stop-Process` wrapper；Windows 上杀 wrapper 不会带走子进程，这个握手是必须的。
 - 体积：`exe_bytes=115304960`、`zip_bytes=54736271`；tag `v0.2.0` 的门禁 run `42660878983` 走到 `publish release` 成功，release 资产 `gpulease-windows-x64.zip` 54736271 字节 + `SHA256SUMS.txt` 172 字节；下载后自算 zip SHA256 = `a4f195b7…cadfeb8`，与文件里 zip 那行一致。
 - 本机 macOS `bun test` 62 条绿（v0.2 的 55 条 + 告警 7 条）。
+
+## 0.5.0 的装 / 卸验收
+
+门禁里新增一步，在这台节点真实的注册表和用户 PATH 上跑：
+
+1. `install --dir <临时目录> --autostart --json` → 断言 exe 落地、开始菜单 `.lnk` 存在、用户 PATH 里这段恰好出现一次、`Run` 项是 `"…\gpulease.exe" daemon --quiet`。
+2. 再装一次 → 断言 PATH 里仍然只有一份（升级路径不会堆）。
+3. 用装好的那份跑 `ls --json` → 断言能跑、输出里 `gpus` 段在。
+4. `uninstall --purge --json` → 断言 exe、快捷方式、`Run` 项都没了，用户 PATH 逐字回到装之前。
+5. 整段包在 `try/finally` 里：中途失败也把注册表和 PATH 复原，不留脏。
+
+临时目录与 `GPULEASE_HOME` 都指向 `RUNNER_TEMP` 下的测试目录，不碰节点上真实的状态目录。

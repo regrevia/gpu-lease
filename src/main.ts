@@ -18,6 +18,7 @@ import {
   updateJob,
 } from "./store";
 import { buildHistory, renderHistory } from "./history";
+import { commandInstall, commandUninstall } from "./install";
 
 const HELP = `gpulease ${VERSION} — 显卡值班员
 
@@ -33,6 +34,8 @@ const HELP = `gpulease ${VERSION} — 显卡值班员
   gpulease alerts [--json] [--limit 30]
   gpulease history [--minutes 30] [--gpu N] [--json]
   gpulease doctor [--json] [--bundle] [--soak [--seconds 30]]
+  gpulease install [--autostart] [--no-start-menu] [--dir DIR] [--json]
+  gpulease uninstall [--purge] [--dir DIR] [--json]
   gpulease --version
 
 它只回答三个问题：哪张卡在跑哪个任务、还正常吗、出问题要不要你动手。
@@ -298,6 +301,10 @@ export async function main(argv: string[]): Promise<number> {
       return commandServe(rest);
     case "doctor":
       return commandDoctor(rest);
+    case "install":
+      return await commandInstall(rest);
+    case "uninstall":
+      return await commandUninstall(rest);
     default:
       console.error(`未知命令：${cmd}\n`);
       console.log(HELP);

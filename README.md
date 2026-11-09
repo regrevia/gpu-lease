@@ -20,7 +20,7 @@ v0.3 加了排队：`gpulease submit --name "训练 SDXL LoRA" --need-vram 12 --
 
 ## 下载（Windows）
 
-**[gpulease 0.3.0](https://github.com/regrevia/gpu-lease/releases/tag/v0.3.0)** → `gpulease-windows-x64.zip`（54,741,095 字节 / 52.2 MB），解压得到 `gpulease.exe`（115,320,320 字节 / 110 MB）。
+**[gpulease 0.4.0](https://github.com/regrevia/gpu-lease/releases/tag/v0.4.0)** → `gpulease-windows-x64.zip`（54,743,587 字节 / 52.2 MB），解压得到 `gpulease.exe`（115,328,000 字节 / 110 MB）。
 旁边 `SHA256SUMS.txt` 里有 exe 与 zip 两行，先核对再运行：
 
 ```powershell
@@ -28,6 +28,16 @@ Get-FileHash .\gpulease-windows-x64.zip -Algorithm SHA256   # 和 SHA256SUMS.txt
 ```
 
 未签名，首次运行会被 SmartScreen 拦一次（更多信息 → 仍要运行）。没有显卡的机器也能跑，`doctor` 会直说没有 NVIDIA 卡。
+
+装进系统（可选，装完任何终端里都能直接敲 `gpulease`）：
+
+```powershell
+.\gpulease.exe install --autostart   # 放 %LOCALAPPDATA%\gpulease\bin + 用户 PATH + 开始菜单 + 登录后自启值班
+.\gpulease.exe install               # 不想要自启就去掉 --autostart
+.\gpulease.exe uninstall --purge     # 连程序文件和状态目录一起删
+```
+
+升级就是下载新版、再跑一次 `install`。细节与排障：[安装与排障](docs/07-install-and-troubleshooting.md)。
 
 ## 为什么做这个
 

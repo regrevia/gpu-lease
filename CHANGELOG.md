@@ -1,5 +1,21 @@
 # 变更记录
 
+## 0.5.0
+
+### 新增
+
+- `gpulease install [--autostart] [--no-start-menu] [--dir DIR] [--json]`：把 exe 放到 `%LOCALAPPDATA%\gpulease\bin`、加进用户级 PATH、建开始菜单快捷方式（指向 `watch`）；`--autostart` 再写一条 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\gpulease` = `"...\gpulease.exe" daemon --quiet`，登录后值班自己起来。`--dir` 换落点（便携目录），`--json` 给机器读。
+- `gpulease uninstall [--purge] [--dir DIR] [--json]`：删自启项、快捷方式、PATH 里这一段；`--purge` 连程序文件和状态目录（任务账本 / 历史 / 日志）一起删。正在运行的 exe 删不掉，会改名成 `.old`，不装作删成功。
+- 升级就是再跑一次新版 `install`：正在跑的旧 exe 先改名 `.old`，新文件写进去，下次启动清掉。重装不会重复往 PATH 里加（大小写不敏感、容忍尾分号）。
+- Windows 门禁新增一步 `install / uninstall on real Windows`：真机装 → 再装一次断言 PATH 不重复 → 从装好的位置跑 `ls --json` → 卸干净，并断言用户 PATH 回到原样、`Run` 项消失、exe 与快捷方式都没了；失败也走 `finally` 把注册表和 PATH 复原。门禁从 19 步变 20 步。
+- `docs/07-install-and-troubleshooting.md`：装 / 升级 / 卸载三条路径，和"PATH 没生效""自启没起来""门禁节点为什么没有显卡数字"这些实际会卡住人的地方。
+
+### 诚实边界
+
+- `install` / `uninstall` 只在 Windows 上工作，其它平台直接拒绝（不是"静默跳过"）。
+- 必须用编译出来的 `gpulease.exe` 跑 `install`；用 `bun` 直接跑源码时会拒绝，否则装进去的是 bun。
+- 开始菜单快捷方式用 `WScript.Shell` COM 建；没有开始菜单的 Windows Server Core 上会明确报错，不会假装建好。
+
 ## 0.4.0
 
 ### 新增

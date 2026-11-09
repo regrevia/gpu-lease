@@ -172,6 +172,62 @@ jobs:
 
       # 信息性一步：进程层采不到时，把每条子进程路径的耗时/退出码打出来，便于定位。
       # continue-on-error：诊断信息不该把门禁变红。
+      - name: install / uninstall on real Windows（装进去、从 PATH 里敲、再卸干净）
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $exe = (Resolve-Path dist/gpulease.exe).Path
+          $root = Join-Path $env:RUNNER_TEMP "gpulease-install-test"
+          if (Test-Path $root) { Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue }
+          $bin = Join-Path $root "bin"
+          $env:GPULEASE_HOME = Join-Path $root "home"
+          $before = [Environment]::GetEnvironmentVariable('PATH','User')
+          $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          try {
+            # 1) 装
+            $out = & $exe install --dir $bin --autostart --json 2>&1 | Out-String
+            if ($LASTEXITCODE -ne 0) { throw "install 退出码 $LASTEXITCODE`n$out" }
+            $j = $out | ConvertFrom-Json
+            if ($j.exe -ne (Join-Path $bin 'gpulease.exe')) { throw "装到哪不对：$($j.exe)" }
+            if (-not (Test-Path $j.exe)) { throw "exe 不在：$($j.exe)" }
+            if (-not (Test-Path $j.shortcut)) { throw "开始菜单快捷方式没建：$($j.shortcut)" }
+            $userPath = [Environment]::GetEnvironmentVariable('PATH','User')
+            $hit = @($userPath -split ';' | Where-Object { $_.Trim().ToLower() -eq $bin.ToLower() })
+            if ($hit.Count -ne 1) { throw "用户 PATH 里 $bin 出现 $($hit.Count) 次" }
+            $run = (Get-ItemProperty -Path $runKey -Name 'gpulease' -ErrorAction SilentlyContinue).gpulease
+            if (-not $run -or $run -notlike '*daemon --quiet*') { throw "自启项不对：$run" }
+            Write-Host "install: exe=$($j.exe) shortcut=$($j.shortcut) run=$run"
+
+            # 2) 再装一次：不重复加 PATH（升级路径）
+            $out2 = & $exe install --dir $bin --autostart --json 2>&1 | Out-String
+            if ($LASTEXITCODE -ne 0) { throw "第二次 install 退出码 $LASTEXITCODE`n$out2" }
+            $n = @([Environment]::GetEnvironmentVariable('PATH','User') -split ';' | Where-Object { $_.Trim().ToLower() -eq $bin.ToLower() }).Count
+            if ($n -ne 1) { throw "重装后 PATH 里重复了 $n 次" }
+
+            # 3) 装好的那份自己跑得起来
+            $ls = & $j.exe ls --json 2>&1 | Out-String
+            if ($LASTEXITCODE -ne 0) { throw "装好的 exe 跑不起来：$ls" }
+            $parsed = $ls | ConvertFrom-Json
+            if ($null -eq $parsed.gpus) { throw "装好的 exe 输出不对：$ls" }
+
+            # 4) 卸
+            $un = & $exe uninstall --dir $bin --purge --json 2>&1 | Out-String
+            if ($LASTEXITCODE -ne 0) { throw "uninstall 退出码 $LASTEXITCODE`n$un" }
+            if (Test-Path $j.exe) { throw "卸完 exe 还在：$($j.exe)" }
+            if (Test-Path $j.shortcut) { throw "卸完快捷方式还在" }
+            $runAfter = (Get-ItemProperty -Path $runKey -Name 'gpulease' -ErrorAction SilentlyContinue).gpulease
+            if ($runAfter) { throw "卸完自启项还在：$runAfter" }
+            $pathAfter = [Environment]::GetEnvironmentVariable('PATH','User')
+            if ($pathAfter -split ';' | Where-Object { $_.Trim().ToLower() -eq $bin.ToLower() }) { throw "卸完 PATH 里还有 $bin" }
+            if ($pathAfter -ne $before) { throw "卸完用户 PATH 没回到原样" }
+            Write-Host "install/uninstall: 装 → 重装不重复 → 跑 → 卸干净，全过"
+          } finally {
+            # 失败也别把注册表和 PATH 留脏
+            Remove-ItemProperty -Path $runKey -Name 'gpulease' -ErrorAction SilentlyContinue
+            [Environment]::SetEnvironmentVariable('PATH', $before, 'User')
+            Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+          }
+
       - name: gpu scenarios against the exe（这台节点没有 NVIDIA 卡）
         if: hashFiles('package.json') != ''
         shell: powershell
