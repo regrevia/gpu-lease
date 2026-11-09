@@ -46,3 +46,40 @@
 官方文档写在 `win-runner/docs/USING-THE-MACHINE.md`，下面是这次实际踩到的坑：
 
 1. `scripts/repos.txt` 加一行 `owner/repo`，提交。
+2. 用管理员 PowerShell 跑 `.\scripts\register-repos.ps1`。它给 `repos.txt` 里每个仓库申请注册 token 并调 `config.cmd`。token 一次性、1 小时过期，脚本要现取现用，不要提前生成放一会儿。
+3. 注册完到 GitHub 仓库的 Settings → Actions → Runners 看：应该出现 `regrevia-<仓库名>`，标签 `self-hosted`、`Windows`、`X64`、`regrevia-win`，状态 Idle。
+4. **push 之前先确认节点空闲**。机器上只有一个 runner 实例，同一时刻只跑一个作业；两个 push 前后脚进来，后一个会在队列里等，不是并行。
+5. 工作流里 `runs-on: [self-hosted, windows, x64, regrevia-win]`，`concurrency` 按 ref 分组（`windows-gate-${{ github.ref }}`）。共用一组时实测会出问题：后到的 tag 运行在**零作业**的情况下被取消，release 直接没机会跑。
+
+### 这次实测修掉的两个坑
+
+- **PowerShell 的退出码会漏**：`smoke=ok` 打出来了，作业还是红，因为上一条原生命令的 `$LASTEXITCODE` 留着非零。每个 PowerShell 步骤末尾显式 `$global:LASTEXITCODE = 0`。
+- **不要跨作业传产物**：`download-artifact` 在这台节点上卡满 15 分钟被作业超时取消（更早克隆仓库时也撞过 blob 504）。产物本来就在同一台机器上，`publish release` 并进 build 作业直接发。
+
+### 重新注册或换账号
+
+`config.cmd --unattended --replace` 覆盖旧配置。runner 以 `NetworkService` 身份运行：没有建符号链接的权限（`setup-bun` 因此不可用）、没有按用户安装的能力、也没有交互桌面，所以 `watch` 这类 TUI 不在门禁覆盖范围内。
+
+## 5. 常驻与资源纪律
+
+- 一个仓库一个 runner 实例，别在同一台机器上给同一仓库注册两个。
+- runner 空闲时基本不吃 CPU/显存；占资源的是作业本身（编译 bun 单文件约 1 分钟、峰值内存 ~1 GB）。
+- 门禁里的子进程探针（`doctor --probe`）是**信息性**的：每个用例 4 秒超时、另加一条 12 秒 `tasklist` 用例，跑完约 35 秒。它测的是"这台机器让不让读进程"，读数进日志即可，**不许变红**——机器降级不是代码 bug。
+- 不要把 runner 上编译出来的二进制直接当发布产物——它经过 `checksum` 步骤生成 SHA256 才进 release；人工下载后再自算一遍（本机验证过：zip 的 SHA256 与 `SHA256SUMS.txt` 里一致）。
+
+## 6. 判定标准
+
+一次发布只有同时满足下面四条才算"能用"：
+
+1. 门禁 run 是 `status=completed conclusion=success`（不看 `gh run watch` 的退出码，也不只看 `##[error]` 行）。
+2. 日志里有 `exe_bytes=` 与 `zip_bytes=`（体积不是猜的），以及 `smoke=ok`。
+3. `smoke test the exe` 四条断言全过：摘掉 PATH 里的 Node 仍能启动、`doctor --json` 在无卡机器上诚实报告、`run` 真起子进程后 `ls --json` 查得到且判为正常、子进程退出码 7 原样传回。
+4. 远端能查到 release 与两个资产，且下载后自算 SHA256 与 `SHA256SUMS.txt` 一致。
+
+### v0.1.0 的实际证据（2026-11-09）
+
+- 门禁 run `42633177546`（`v0.1.0` tag）→ `conclusion=success`。
+- `exe_bytes=115299840`（110 MB）、`zip_bytes=54735323`（52.2 MB）。
+- 远端 release：`gpulease-windows-x64.zip` 54735323 字节 + `SHA256SUMS.txt`（exe 与 zip 两行）。
+- 本地重新下载 zip 后算 SHA256 = `a2969f9e…a82851`，与文件里 zip 那行一致。
+- `process_layer=partial detail=只有进程名，命令行为空（CIM 超时 6s）`：这台机器读不到命令行，属于**预期降级**，不是失败。
