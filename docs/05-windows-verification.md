@@ -37,9 +37,9 @@
 
 触发：`workflow_dispatch`、`push` 到 `main`、`v*` tag。**绝不接 `pull_request`**——公开仓库的自托管 runner 会让 fork 代码直接在那台机器上执行。
 
-步骤：`node facts`（OS / 内存 / 有无 NVIDIA）→ 解析 bun（不依赖 `setup-bun`，服务账号没有建符号链接的权限）→ `install` → `test` → `compile`（打印 `exe_bytes`）→ `smoke test the exe`（摘 PATH + 四条断言）→ `diagnose subprocess layer`（`doctor --probe`，信息性）→ `checksum` → `measure ship size` → `artifact` → 分支结束。任一硬步骤失败即不发布。
+步骤：`node facts`（OS / 内存 / 有无 NVIDIA）→ 解析 bun（不依赖 `setup-bun`，服务账号没有建符号链接的权限）→ `install` → `test` → `compile`（打印 `exe_bytes`）→ `smoke test the exe`（摘 PATH + 四条断言）→ `diagnose subprocess layer`（`doctor --probe`，信息性）→ `pack zip`（量 exe/zip 体积）→ `checksum`（exe 与 zip 各一行 SHA256）→ `artifact` → 分支结束。任一硬步骤失败即不发布。
 
-`release` job 只在 tag 上跑，用 `GITHUB_TOKEN` 上传 exe 与校验文件。**未签名**，首次运行会被 SmartScreen 拦（这是 v1 的已知取舍，见 `research/windows-and-packaging.md` §6）。
+`release` job 只在 tag 上跑，用 `GITHUB_TOKEN` 上传 `gpulease-windows-x64.zip` 与 `SHA256SUMS.txt`，发布说明取自 `.github/release-notes/<tag>.md`（没有就报错，不做"无说明发布"）。**未签名**，首次运行会被 SmartScreen 拦（这是 v1 的已知取舍，见 `research/windows-and-packaging.md` §6）。
 
 ## 4. 给这台机器加一个仓库（实测版）
 

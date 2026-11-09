@@ -182,22 +182,31 @@ jobs:
           }
           $global:LASTEXITCODE = 0
 
-      - name: checksum
-        if: hashFiles('package.json') != ''
-        shell: powershell
-        run: |
-          $h = (Get-FileHash dist/gpulease.exe -Algorithm SHA256).Hash.ToLower()
-          "$h  gpulease.exe" | Out-File -Encoding ascii dist/SHA256SUMS.txt
-          Get-Content dist/SHA256SUMS.txt | Write-Host
-
-      - name: measure ship size
+      - name: pack zip
         if: hashFiles('package.json') != ''
         shell: powershell
         run: |
           $exe = (Resolve-Path dist/gpulease.exe).Path
           Compress-Archive -Path $exe -DestinationPath dist/gpulease-windows-x64.zip -Force
           $z = Get-Item dist/gpulease-windows-x64.zip
+          $e = Get-Item $exe
+          Write-Host ("exe_bytes={0} size_mb={1}" -f $e.Length, [math]::Round($e.Length/1MB,1))
           Write-Host ("zip_bytes={0} zip_mb={1}" -f $z.Length, [math]::Round($z.Length/1MB,1))
+
+      - name: checksum
+        if: hashFiles('package.json') != ''
+        shell: powershell
+        run: |
+          $lines = @()
+          foreach ($f in @("gpulease.exe", "gpulease-windows-x64.zip")) {
+            $p = "dist/$f"
+            if (Test-Path $p) {
+              $h = (Get-FileHash $p -Algorithm SHA256).Hash.ToLower()
+              $lines += "$h  $f"
+            }
+          }
+          $lines | Out-File -Encoding ascii dist/SHA256SUMS.txt
+          Get-Content dist/SHA256SUMS.txt | Write-Host
 
       - name: upload artifact
         if: hashFiles('package.json') != ''
@@ -205,7 +214,7 @@ jobs:
         with:
           name: gpulease-windows-x64
           path: |
-            dist/gpulease.exe
+            dist/gpulease-windows-x64.zip
             dist/SHA256SUMS.txt
           if-no-files-found: error
 
@@ -235,5 +244,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           $tag = $env:GITHUB_REF -replace '^refs/tags/', ''
           Get-Content dist/SHA256SUMS.txt | Write-Host
-          gh release create $tag dist/gpulease.exe dist/SHA256SUMS.txt --title $tag --notes "unsigned; verify SHA256 before running" --verify-tag
+          $notes = ".github/release-notes/$tag.md"
+          if (-not (Test-Path $notes)) { throw "缺少发布说明 $notes" }
+          gh release create $tag dist/gpulease-windows-x64.zip dist/SHA256SUMS.txt --title "gpulease $tag" --notes-file $notes --verify-tag
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
