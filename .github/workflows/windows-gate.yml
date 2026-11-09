@@ -1,0 +1,150 @@
+name: windows-gate
+
+# The acceptance gate for "在 Windows 上双击就能用".
+#
+# It runs on the self-hosted Windows node (label set regrevia-win), not on a
+# hosted windows-latest image: the point is to prove the artifact on the same
+# class of machine as the users. Never wire pull_request to this workflow — a
+# public repository would then execute fork code on that machine.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-gate
+  cancel-in-progress: false
+
+jobs:
+  build-and-verify:
+    runs-on: [self-hosted, windows, x64, regrevia-win]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: node facts
+        shell: powershell
+        run: |
+          Write-Host "::add-mask::$env:USERNAME"
+          Write-Host "::add-mask::$env:COMPUTERNAME"
+          Write-Host "runner=$env:RUNNER_NAME"
+          (Get-CimInstance Win32_OperatingSystem) | ForEach-Object { Write-Host "os_build=$($_.BuildNumber) ram_gb=$([math]::Round($_.TotalVisibleMemorySize/1MB,1))" }
+          if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
+            Write-Host "nvidia_smi=present"
+            (& nvidia-smi --query-gpu=index,name,driver_version,memory.total --format=csv,noheader 2>&1) | Write-Host
+          } else {
+            Write-Host "nvidia_smi=absent (this node verifies packaging and process layer, not GPU telemetry)"
+          }
+
+      - name: setup bun
+        if: hashFiles('package.json') != ''
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: install
+        if: hashFiles('package.json') != ''
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          bun install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { throw "bun install failed" }
+
+      - name: test
+        if: hashFiles('package.json') != ''
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          bun test
+          if ($LASTEXITCODE -ne 0) { throw "tests failed" }
+
+      - name: compile single exe
+        if: hashFiles('package.json') != ''
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          bun build --compile --target=bun-windows-x64 --outfile dist/gpulease.exe src/main.ts
+          if ($LASTEXITCODE -ne 0) { throw "bun build failed" }
+          $f = Get-Item dist/gpulease.exe
+          Write-Host ("exe_bytes={0} size_mb={1}" -f $f.Length, [math]::Round($f.Length/1MB,1))
+
+      - name: smoke test the exe
+        if: hashFiles('package.json') != ''
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          # A single-file exe must not need node on PATH.
+          $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -notmatch 'nodejs|nvm' }) -join ';'
+          $exe = (Resolve-Path dist/gpulease.exe).Path
+
+          $v = & $exe --version 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "--version exited $LASTEXITCODE" }
+          Write-Host "version=$($v.Trim())"
+
+          # No GPU on this node: the daemon must degrade honestly, not crash.
+          $doc = & $exe doctor --json 2>&1 | Out-String
+          Write-Host $doc
+          if ($LASTEXITCODE -ne 0) { throw "doctor exited $LASTEXITCODE" }
+          $null = $doc | ConvertFrom-Json
+
+          $ls = & $exe ls --json 2>&1 | Out-String
+          Write-Host $ls
+          if ($LASTEXITCODE -ne 0) { throw "ls exited $LASTEXITCODE" }
+          $parsed = $ls | ConvertFrom-Json
+          if ($null -eq $parsed) { throw "ls --json did not produce JSON" }
+
+          # Fake-GPU mode proves the parser and the rules without hardware.
+          $fake = & $exe doctor --json --fake-gpu 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "doctor --fake-gpu exited $LASTEXITCODE" }
+          $null = $fake | ConvertFrom-Json
+          Write-Host "smoke=ok"
+
+      - name: checksum
+        if: hashFiles('package.json') != ''
+        shell: powershell
+        run: |
+          $h = (Get-FileHash dist/gpulease.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  gpulease.exe" | Out-File -Encoding ascii dist/SHA256SUMS.txt
+          Get-Content dist/SHA256SUMS.txt | Write-Host
+
+      - name: upload artifact
+        if: hashFiles('package.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpulease-windows-x64
+          path: |
+            dist/gpulease.exe
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: scaffold only
+        if: hashFiles('package.json') == ''
+        shell: powershell
+        run: Write-Host "::notice::no package.json yet — the gate has nothing to build"
+
+  release:
+    needs: build-and-verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: [self-hosted, windows, x64, regrevia-win]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gpulease-windows-x64
+          path: dist
+
+      - name: publish release
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = $env:GITHUB_REF -replace '^refs/tags/', ''
+          Get-Content dist/SHA256SUMS.txt | Write-Host
+          gh release create $tag dist/gpulease.exe dist/SHA256SUMS.txt --title $tag --notes "见 docs/；未签名，首次运行 Windows 会提示，校验 SHA256 后放行。" --verify-tag
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }

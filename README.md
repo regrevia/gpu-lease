@@ -43,6 +43,12 @@ gpulease ls / status / logs <id> / stop <id> / doctor
 
 单文件、无 Node 依赖、常驻 < 40 MB。[技术决策](docs/03-architecture.md)
 
+## Windows 验收
+
+产物不是"我们机器上编译过"，而是在真的 Windows 上跑过才算数。自托管节点 `regrevia-gpu-lease`（Windows 11，管理员服务）承接 `.github/workflows/windows-gate.yml`：编译单文件 exe → 摘掉 PATH 里的 Node 再跑 → `doctor --json` / `ls --json` 必须可解析 → `--fake-gpu` 验解析与规则 → 出 SHA256 → tag 才发 Release。
+
+这条节点**没有 NVIDIA 显卡**，所以它验的是打包、CLI、JSON 契约、无卡降级；有卡的判断要靠真机 `gpulease doctor --dump` 的输出来补。细节见 [Windows 真机验收](docs/05-windows-verification.md)。
+
 ## 文档
 
 | 文档 | 内容 |
@@ -61,4 +67,4 @@ gpulease ls / status / logs <id> / stop <id> / doctor
 
 ## 状态
 
-调研与设计完成，等待开工。MIT。
+调研、竞品分析、产品设计、架构、Windows 打包与真机验收管线完成。代码未开工（等你点头）。MIT。
