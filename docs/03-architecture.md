@@ -5,13 +5,18 @@
 
 ---
 
+## 0. 一句话
+
+采集只有两个来源：显卡用 `nvidia-smi`，进程用 Windows 的进程表。两个来源都会坏（驱动不给、WMI 慢、跨用户没权限），所以每一层都有一条"降级但说实话"的路，而不是直接空面板。
+
 ## 1. 进程与模块
 
 ```
 gpulease.exe
  ├─ cli          main.ts：run / ls / watch / serve / doctor / --version
  ├─ supervisor   run.ts：spawn 子进程、注入环境变量、双路 tee 落日志、转发退出码
- ├─ collector    collect/nvidia.ts（nvidia-smi）+ collect/winproc.ts（CIM 进程树），exec.ts 带硬超时
+ ├─ collector    collect/smi.ts（唯一的 nvidia-smi 入口）+ collect/nvidia.ts（解析）
+ │                + collect/winproc.ts（三级降级进程树），exec.ts 带硬超时
  ├─ engine       attribute.ts（pid → 任务）+ rules.ts（判定）
  ├─ store        bun:sqlite，一张 runs 表，WAL
  ├─ http         server.ts：REST + SSE，127.0.0.1:7788
@@ -34,6 +39,17 @@ gpulease.exe
 同一次快照再查一次 `--query-compute-apps=pid,process_name,used_memory`。**Windows 上 `used_memory` 恒为 N/A**，`Gpu.per_process_vram_available` 固定为 `false`，上层据此不显示按任务的 GB。
 
 **故障处理**：`nvidia-smi` 超时 → `status = "error"`，`nvidia-smi` 不存在 → `status = "absent"`。外接显卡拔线时 `nvidia-smi` 可能挂住不返回，超时是必须的，不是可选。
+
+### 2.1 读卡命令是可注入的（`GPULEASE_SMI`）
+
+`collect/smi.ts` 是唯一构造这条命令的地方：默认 `nvidia-smi`，找不到时退到 `%ProgramFiles%\NVIDIA Corporation\NVSMI\nvidia-smi.exe`；设了 `GPULEASE_SMI` 就用它（按空格切参数）。
+
+这个开关只为两件事存在：
+
+1. **门禁**：自托管节点没有 NVIDIA 卡。靠 `test/fixture/smi.ts` 这个替身，多卡异型号、单卡、无卡、驱动报错、断联、无权限、空载、超时这 8 种输入都能在真 Windows 上跑完整链路（`run` → `ls` → 判定 → `doctor`），而不是只在 mac 上测个解析函数。
+2. **现场诊断**：用户报"面板说没卡"时，可以让他把这条命令指到自己的包装脚本上，看是驱动问题还是解析问题。
+
+代价与边界：替身只能验证"给定这些行，我们怎么做判断"，不能验证驱动真会吐这些行。所以 `doctor` 在替身生效时会明说"显卡数据来自替身"，任何"支持多卡"的说法仍然只认真卡证据。
 
 ## 3. 归属层（产品的命门）
 

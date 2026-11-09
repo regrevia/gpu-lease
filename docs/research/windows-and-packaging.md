@@ -164,3 +164,40 @@ Windows 上落地只有两条路，且都不能带 `.node`：
 
 1. **是否允许非单文件**：不允许。凡是需要 `.node` 的方案一律排除，SQLite 用 `bun:sqlite`，NVML 用 `bun:ffi`。
 2. **是否接受首次运行的 SmartScreen 提示**：接受。首发 0 成本，签名留到有用户量之后。
+
+## 10. 无卡节点上到底验到了什么（2026-11-10）
+
+自托管节点没有 NVIDIA 显卡，这台机器能给的证据有明确边界，写清楚比含糊过去强。
+
+**能验（真 Windows + 真 exe）**
+
+| 事 | 证据 |
+|---|---|
+| 双卡异型号不串味、单卡不多出一张 | 替身 `two-gpu` / `single` 场景，`ls --json` 断言卡名与显存总量 |
+| 无卡 / 驱动报错时诚实降级 | `absent` → `nvidia=absent`；`error` → `error` + 驱动原话 |
+| 断联（进程表读不到）不崩 | `lost` 场景：卡数据保留、进程表为空 |
+| WDDM 下按进程显存恒为 `[N/A]` | 所有 `procs[].vram_mb` 断言 `null` |
+| 人读的那行带卡名 | `ls --no-color` 含 `RTX 4090` |
+| 替身不被当成真卡 | `doctor --json` 的 notes 含"替身" |
+| run → ls → 判定 → 退出码透传 | 真子进程，门禁 smoke 与 e2e 各一遍 |
+
+**不能验（必须真卡，别写成"支持"）**
+
+- NVML 真实返回值与 per-process 显存是否有部分可读。
+- 多卡型号差异下的实际功耗/温度/频率字段形态。
+- TDR 4101 / `nvlddmkm` 13/14/153 在事件日志里的真实出现。
+- Thunderbolt eGPU 热拔插的掉卡瞬间行为与 `NVML_ERROR_GPU_IS_LOST`。
+- `nvml.dll` 上 `bun:ffi` 的真实开销。
+
+**探针实测（同节点，便于以后对照）**
+
+| 调用 | 结果 |
+|---|---|
+| `cmd` 内建 | code 0，50 ms |
+| `tasklist`（PATH / 绝对路径） | 4.1 s / 4.4 s 后超时，不返回 |
+| `powershell`（绝对路径） | 4.4 s 后超时 |
+| `Get-Process \| ConvertTo-Json` | code 0，3126 ms，750955 bytes |
+| `wmic` | PATH 里没有 |
+| `Get-CimInstance Win32_Process` | 成功但接近 6 s 上限，故保留三级降级 |
+
+这也解释了面板为什么要缓存 4 s：每次读进程树是秒级的事，2 s 刷新不缓存等于每 2 s 起一个 PowerShell。
