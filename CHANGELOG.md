@@ -17,6 +17,7 @@
 - 新两步的实跑输出：`history: ticks=2, card0_points=2, spark=                      ██, peak=97`、`perf: ticks=4, tick_avg=7127.8ms, tick_max=19631ms, cpu=0.5%, rss=27.9MB, peak=32.5MB`。
 - 这台节点这次进程层是 `unavailable`（CIM / Get-Process / tasklist 三条全超时），所以每轮采集 7–20 秒、任务归因只剩"自己起的子进程"。CPU 0.5%、常驻 28 MB 是监控自己的开销。有卡、进程层正常的机器上没验过具体刷新间隔。
 - 本机 macOS `bun test` 92 条绿 / 242 断言（0.3 的 77 条 + 历史 12 条 + 崩溃 2 条 + 浸泡 1 条）。
+- 30 分钟长浸泡（`soak.yml`）：run `42700621031`（`5c6667b4`）：`seconds=1803.2`、`ticks=295`、`tick_avg=4868.2ms`、`tick_max=27822ms`、`cpu=0.8%`、`rss=40.6MB`（首轮 31.8 MB，涨 8.8 MB，峰值 48.9 MB）。门槛是"跑够时长 + 至少 20 轮 + CPU < 40% + RSS < 200 MB + 峰值 < 350 MB + 30 分钟内增长 < 30 MB"，都过。
 
 ## 0.3.0
 
