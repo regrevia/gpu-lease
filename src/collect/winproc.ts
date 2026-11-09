@@ -2,7 +2,7 @@
 // 只用于两件事：判断我们起的任务还在不在，以及把 GPU 上的 pid 归到某个任务。
 // 拿不到就说拿不到（跨用户进程的 CommandLine 是 NULL），不猜。
 
-import { exec, IS_WIN } from "./exec";
+import { exec, IS_WIN, type ExecResult } from "./exec";
 
 export type ProcessInfo = {
   pid: number;
@@ -67,7 +67,6 @@ export async function listProcesses(opts: { refresh?: boolean; timeoutMs?: numbe
   }
 
   const timeoutMs = opts.timeoutMs ?? 8000;
-  const started = Date.now();
   const ps = await exec(
     [
       POWERSHELL,
@@ -78,7 +77,7 @@ export async function listProcesses(opts: { refresh?: boolean; timeoutMs?: numbe
     ],
     { timeoutMs },
   );
-  const cimReason = why(ps, timeoutMs, Date.now() - started);
+  const cimReason = why(ps, timeoutMs);
 
   let procs: ProcessInfo[] = [];
   let degraded: string | null = null;
@@ -87,12 +86,11 @@ export async function listProcesses(opts: { refresh?: boolean; timeoutMs?: numbe
     procs = parseCimJson(ps.stdout);
   }
   if (procs.length === 0) {
-    const tlStarted = Date.now();
     const tl = await exec([TASKLIST, "/FO", "CSV", "/NH"], { timeoutMs: 5000 });
     procs = tl.code === 0 ? parseTasklist(tl.stdout) : [];
     degraded = procs.length
       ? `命令行不可用（CIM ${cimReason}，只有进程名）`
-      : `进程层不可用（CIM ${cimReason}；tasklist ${why(tl, 5000, Date.now() - tlStarted)}）`;
+      : `进程层不可用（CIM ${cimReason}；tasklist ${why(tl, 5000)}）`;
   }
 
   cache = { at: Date.now(), procs, degraded };
@@ -100,14 +98,14 @@ export async function listProcesses(opts: { refresh?: boolean; timeoutMs?: numbe
 }
 
 /** 说清一次采集为什么没成：超时 / 退出码 / spawn 都没起来。 */
-function why(r: { code: number; stdout: string; stderr: string; timedOut: boolean }, timeoutMs: number, tookMs: number): string {
+function why(r: ExecResult, timeoutMs: number): string {
   if (r.timedOut) return `超时 ${Math.round(timeoutMs / 1000)}s`;
   if (r.code === -1) {
     const e = (r.stderr || r.stdout).trim().split(/\r?\n/)[0] ?? "";
     return `起不来${e ? `：${e.slice(0, 120)}` : ""}`;
   }
   const e = (r.stderr || r.stdout).trim().split(/\r?\n/)[0] ?? "";
-  return `退出码 ${r.code}${e ? `：${e.slice(0, 120)}` : ""}（${tookMs}ms）`;
+  return `退出码 ${r.code}${e ? `：${e.slice(0, 120)}` : ""}（${r.ms}ms）`;
 }
 
 export function isAlive(pid: number): boolean {
