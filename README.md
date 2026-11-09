@@ -1,0 +1,64 @@
+# gpulease · 显卡值班员
+
+一台机器上几张卡，跑着训练、ComfyUI、推理服务、下载。任务管理器里它们**全都叫 `python.exe`**。
+你真正想知道的只有三件事：**这是哪个任务？它还正常吗？出事了叫我。**
+gpulease 就是替你看住这张卡的值班员。
+
+```
+$ gpulease ls
+训练 SDXL LoRA   卡0  62%  epoch 7/30   预计 2h10m   正常
+ComfyUI 批量     卡1  88%  214/500 张   预计 28m     正常
+下载 FLUX 模型   卡0  --   停滞 15 分钟  显存仍占满  ⚠
+```
+
+## 为什么做这个
+
+- GitHub 上 `gpu monitor` 有 4770 个仓库、`gpu dashboard` 1528 个 —— **数字层已经过剩**。
+- 但 NVML / 任务管理器只给 pid 和利用率，**没有任务语义、没有健康判定、没有主动告警**。
+- Windows 原生 + 多卡 + 任务语义 + 主动播报，这个交集**目前没有竞品**：DCGM 只支持 Linux、nvtop 只在 WSL2、gpu-hot 只有 Docker，Windows 上只有指标导出器和传感器工具。
+
+详见 [竞品分析](docs/research/competitors.md)。
+
+## 它是什么
+
+| 层 | 做什么 |
+|---|---|
+| 归属 | 托管启动注入 task_id，进程树精确可追溯；外部进程可 attach，不猜 |
+| 进度 | 进度适配器（tqdm / jsonl / ComfyUI WS / 日志活跃度兜底）归一成 `{done,total,eta}` |
+| 判定 | 12 条健康规则 → `正常 / 变慢 / 停滞 / 疑似 / 失败 / 断联` |
+| 播报 | 模板生成的人话，异常置顶；托盘气泡 + ntfy 推手机 |
+| 调度（v0.5+） | 租约 + 等待队列 + 空占用回收 + 断联迁移 |
+
+**它不是仪表盘。** 仪表盘回答"用了多少"，它回答"谁在跑、还活着吗、要不要管"。
+
+## 形态
+
+一个 exe：双击 → 托盘 + 本地看板（`127.0.0.1:7788`），同时兼作 CLI。
+
+```bash
+gpulease run --name "训练 SDXL LoRA" --gpu 0 -- python train.py
+gpulease attach 12345 --name "生图批量"
+gpulease ls / status / logs <id> / stop <id> / doctor
+```
+
+单文件、无 Node 依赖、常驻 < 40 MB。[技术决策](docs/03-architecture.md)
+
+## 文档
+
+| 文档 | 内容 |
+|---|---|
+| [产品设计](docs/02-product-design.md) | 命题、用户、核心概念、播报规则表、面板、路线 |
+| [技术架构](docs/03-architecture.md) | 模块、采集、归属、适配器、规则引擎、API、打包 |
+| [竞品分析](docs/research/competitors.md) | 11 个同类项目 + Windows 桌面工具 + 空白在哪 |
+| [Windows 与打包](docs/research/windows-and-packaging.md) | WDDM 显存限制、TDR/Xid、DCGM、eGPU、exe 方案 |
+
+## v0.1 范围
+
+只做：采集 + 托管启动 + 任务列表 + 一条自然语言摘要 + 一条告警。
+不做：自动杀、自动调度、多机、历史曲线。
+
+**验收标准：第一眼能看出"原来这是我的训练在跑"。**
+
+## 状态
+
+调研与设计完成，等待开工。MIT。
