@@ -273,7 +273,12 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "ls --json exited $LASTEXITCODE (progress)" }
               $state2 = $raw | ConvertFrom-Json
               $task = $state2.tasks | Where-Object { $_.run.name -eq 'prog' } | Select-Object -First 1
-              if ($task -and $task.progress) { $hit = $task; break }
+              if ($task -and $task.progress) {
+                $hit = $task
+                # 人读那行必须在这个任务还活着的当口取：任务一结束，进度就按设计消失了。
+                $text = & $exe ls --no-color 2>&1 | Out-String
+                break
+              }
             }
           } finally {
             New-Item -ItemType File -Force -Path $stop | Out-Null
@@ -285,7 +290,6 @@ jobs:
           if ($hit.progress.percent -ne 42) { throw "percent was $($hit.progress.percent), expected 42" }
           if ($hit.progress.label -ne '420/1000') { throw "label was $($hit.progress.label), expected 420/1000" }
           if ($hit.progress.eta_sec -ne 47) { throw "eta was $($hit.progress.eta_sec), expected 47" }
-          $text = & $exe ls --no-color 2>&1 | Out-String
           if ($text -notmatch '42%') { throw "human output does not show 42 percent" }
           Write-Host "progress: percent 42, label 420/1000, eta 47s, visible in human output"
 
