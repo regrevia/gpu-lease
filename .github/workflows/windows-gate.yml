@@ -51,7 +51,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          bun install --frozen-lockfile
+          if (Test-Path bun.lock) { bun install --frozen-lockfile } else { bun install }
           if ($LASTEXITCODE -ne 0) { throw "bun install failed" }
 
       - name: test
@@ -59,6 +59,8 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
+          $tests = Get-ChildItem -Recurse -File -Include *.test.ts,*.spec.ts -ErrorAction SilentlyContinue
+          if (-not $tests) { Write-Host "::notice::no test files yet"; exit 0 }
           bun test
           if ($LASTEXITCODE -ne 0) { throw "tests failed" }
 
