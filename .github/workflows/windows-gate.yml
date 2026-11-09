@@ -108,7 +108,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Path dist -Force | Out-Null
-          & $env:BUN_EXE build --compile --target=bun-windows-x64 --outfile dist/gpulease.exe src/main.ts
+          & $env:BUN_EXE build --compile --minify --target=bun-windows-x64 --outfile dist/gpulease.exe src/main.ts
           if ($LASTEXITCODE -ne 0) { throw "bun build failed" }
           $f = Get-Item dist/gpulease.exe
           Write-Host ("exe_bytes={0} size_mb={1}" -f $f.Length, [math]::Round($f.Length/1MB,1))
@@ -151,6 +151,15 @@ jobs:
           $h = (Get-FileHash dist/gpulease.exe -Algorithm SHA256).Hash.ToLower()
           "$h  gpulease.exe" | Out-File -Encoding ascii dist/SHA256SUMS.txt
           Get-Content dist/SHA256SUMS.txt | Write-Host
+
+      - name: measure ship size
+        if: hashFiles('package.json') != ''
+        shell: powershell
+        run: |
+          $exe = (Resolve-Path dist/gpulease.exe).Path
+          Compress-Archive -Path $exe -DestinationPath dist/gpulease-windows-x64.zip -Force
+          $z = Get-Item dist/gpulease-windows-x64.zip
+          Write-Host ("zip_bytes={0} zip_mb={1}" -f $z.Length, [math]::Round($z.Length/1MB,1))
 
       - name: upload artifact
         if: hashFiles('package.json') != ''
