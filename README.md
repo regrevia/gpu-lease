@@ -14,9 +14,11 @@ $ gpulease ls
 
 （这是 v0.2 的输出形状：进度只报日志里真读到的数；读不到就不给数字，不给假数字。）
 
+v0.3 加了排队：`gpulease submit --name "训练 SDXL LoRA" --need-vram 12 -- python train.py` 入列，`gpulease daemon` 常驻按每张卡的余量挑卡起跑，跑挂/断联自动让出卡位，出事推 `alerts`。命令与样例见 [变更记录](CHANGELOG.md#030)。
+
 ## 下载（Windows）
 
-**[gpulease 0.2.0](https://github.com/regrevia/gpu-lease/releases/tag/v0.2.0)** → `gpulease-windows-x64.zip`（54,736,271 字节 / 52.2 MB），解压得到 `gpulease.exe`（115,304,960 字节 / 110 MB）。
+**[gpulease 0.3.0](https://github.com/regrevia/gpu-lease/releases/tag/v0.3.0)** → `gpulease-windows-x64.zip`（54,741,095 字节 / 52.2 MB），解压得到 `gpulease.exe`（115,320,320 字节 / 110 MB）。
 旁边 `SHA256SUMS.txt` 里有 exe 与 zip 两行，先核对再运行：
 
 ```powershell
@@ -90,15 +92,15 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 
 ## 目前范围
 
-已做（v0.2）：采集 + 托管启动 + 归属 + 判定 + 进度 + `ls` / `watch` / `serve` 三个入口 + `doctor` 自检 + 诊断包。
+已做（v0.3）：采集 + 托管启动 + 归属 + 判定 + 进度 + `ls` / `watch` / `serve` 三个入口 + `doctor` 自检 + 诊断包 + 排队与常驻值班选卡 + 告警（冷却、`recovered` 照发）。
 在做（0.3）：`daemon` 常驻值班 + `alerts` 事件表 + webhook 推送（ntfy / 飞书 / 钉钉）+ 队列（`submit` / `queue` / `cancel`，daemon 按余量选卡自动起，跑挂的任务自动让出卡位，告警带 10 分钟冷却）。
-没做：托盘气泡、历史曲线、自动杀、自动调度、多机。这些按 [路线](docs/02-product-design.md) 排。
+没做：托盘气泡、历史曲线、自动杀、多机。这些按 [路线](ROADMAP.md) 排。
 
 **验收标准：第一眼能看出"原来这是我的训练在跑，跑到哪了"。**
 
 ## 状态
 
-v0.2.0 代码完成：`run` / `ls` / `watch` / `serve` / `doctor` 五个入口在本机 macOS 与 Windows 自托管节点上都跑过，`bun test` 55 条绿，Windows 门禁在真机上验到"摘掉 Node 也能起子进程""进度能从活任务的日志里读出来并上屏"。显卡数字（多卡、eGPU 断联）还需要有卡的机器验。MIT。
+v0.3.0 已发布：`run` / `ls` / `watch` / `serve` / `submit` / `queue` / `cancel` / `daemon` / `alerts` / `doctor` 在本机 macOS 与 Windows 自托管节点上都跑过，`bun test` 77 条绿 / 184 断言，Windows 门禁（tag `v0.3.0`，run `42682120449`）走到 `publish release` 成功，真机验到"队列里的活自己上卡跑完并回写 `run_id`""放不下的活带着理由等""进度从活任务日志里读出来并上屏"。显卡数字（多卡、eGPU 断联）还需要有卡的机器验。MIT。
 
 ## 没有 NVIDIA 卡也能验
 
