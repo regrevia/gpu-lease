@@ -91,7 +91,7 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 ## 目前范围
 
 已做（v0.2）：采集 + 托管启动 + 归属 + 判定 + 进度 + `ls` / `watch` / `serve` 三个入口 + `doctor` 自检 + 诊断包。
-在做（0.3）：`daemon` 常驻值班 + `alerts` 事件表 + webhook 推送（ntfy / 飞书 / 钉钉）+ 队列（`submit` / `queue` / `cancel`，daemon 按余量选卡自动起）。
+在做（0.3）：`daemon` 常驻值班 + `alerts` 事件表 + webhook 推送（ntfy / 飞书 / 钉钉）+ 队列（`submit` / `queue` / `cancel`，daemon 按余量选卡自动起，跑挂的任务自动让出卡位，告警带 10 分钟冷却）。
 没做：托盘气泡、历史曲线、自动杀、自动调度、多机。这些按 [路线](docs/02-product-design.md) 排。
 
 **验收标准：第一眼能看出"原来这是我的训练在跑，跑到哪了"。**

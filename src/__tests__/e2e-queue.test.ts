@@ -30,8 +30,10 @@ test("排队的活由值班进程自己找卡起跑，跑完回写队列", async
   let daemon: ReturnType<typeof Bun.spawn> | null = null;
   let db: ReturnType<typeof openStore> | null = null;
   try {
-    expect((await cli(["submit", "--name", "q-fit", "--need-vram", "4096", "--", "echo", "queued-ran"])).code).toBe(0);
-    expect((await cli(["submit", "--name", "q-wait", "--need-vram", "40000", "--", "echo", "never"])).code).toBe(0);
+    // Windows 上没有 echo 这个可执行文件（是 cmd 内建），直接传 echo 会起不来。
+    const say = process.platform === "win32" ? ["cmd", "/c", "echo"] : ["echo"];
+    expect((await cli(["submit", "--name", "q-fit", "--need-vram", "4096", "--", ...say, "queued-ran"])).code).toBe(0);
+    expect((await cli(["submit", "--name", "q-wait", "--need-vram", "40000", "--", ...say, "never"])).code).toBe(0);
 
     // 真值班进程：`--once` 跑完就退，Windows 上它刚起的 run 可能跟着被收走，所以让它活几秒。
     daemon = Bun.spawn([BUN, MAIN, "daemon", "--interval", "500", "--quiet"], {

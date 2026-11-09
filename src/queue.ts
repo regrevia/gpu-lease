@@ -34,6 +34,19 @@ export function occupiesSlot(verdict: string): boolean {
   return verdict !== "failed" && verdict !== "lost";
 }
 
+/** 起了却一直没进 running 的活等多久算死：Windows 上见过 run 包装进程起来就没了，队列永远停在 starting。 */
+export const STUCK_STARTING_MS = 120_000;
+
+export function stuckJobs(
+  jobs: { id: string; name: string; state: string; started_at: number | null }[],
+  at: number,
+  limitMs = STUCK_STARTING_MS,
+): { id: string; name: string }[] {
+  return jobs
+    .filter((job) => job.state === "starting" && job.started_at !== null && at - job.started_at >= limitMs)
+    .map((job) => ({ id: job.id, name: job.name }));
+}
+
 export function freeMb(card: Card): number | null {
   if (card.total_mb === null || card.used_mb === null) return null;
   return Math.max(0, card.total_mb - card.used_mb);

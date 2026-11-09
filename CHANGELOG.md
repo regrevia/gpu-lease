@@ -7,6 +7,10 @@
 - `gpulease daemon`：常驻值班。每轮看一遍状态，只在**变坏**或**从坏恢复**时说话；单实例（`daemon.lock`），心跳写 `daemon.json`。
 - `gpulease alerts`：本地事件表，看历史告警与推送是否成功。
 - 推送：`--webhook` 或 `GPULEASE_WEBHOOK`，认 ntfy、飞书、钉钉、通用 JSON；推不出去也留在本地，不会因为网络问题丢掉告警。
+- 告警冷却：同一条任务同一种毛病 10 分钟内只吵一次，冷却落盘（`alert-cooldown.json`），重启也不重播；`recovered` 永远照发。
+- 卡位回收：跑挂（`failed`）或断联（`lost`）的任务不再占着卡，队列马上能用那张卡起下一件活。
+- 起了没跑起来（`starting` 超过 2 分钟）的活会被标成失败并写明看哪份日志，队列不再无声地卡住。
+- 值班起的每个 run 都把输出落到 `logs/wrapper-<任务>-<队列号>.log`，起不来的原因留得住现场。
 - 告警判据（`src/alerts.ts`，纯函数）：`failed` / `lost` / `stalled` / `suspect` 才打扰；`slow` 只是趋势不算事件；首次见到就不对劲也报；重启不会把"正常"重播一遍。
 
 ## 0.2.0

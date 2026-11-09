@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { freeMb, occupiesSlot, place, type Card } from "../queue";
+import { freeMb, occupiesSlot, place, stuckJobs, type Card } from "../queue";
 
 const card = (index: number, total: number | null, used: number | null, util = 5): Card => ({
   index,
@@ -77,4 +77,15 @@ test("挂掉和断联的任务不再占坑，卡着的照占", () => {
   for (const verdict of ["ok", "slow", "suspect", "stalled", "unknown"]) {
     expect(occupiesSlot(verdict)).toBe(true);
   }
+});
+
+test("停在 starting 太久的活要被认出来，刚开始的不算", () => {
+  const at = 1_000_000;
+  const jobs = [
+    { id: "old", name: "卡死", state: "starting", started_at: at - 200_000 },
+    { id: "new", name: "刚点着", state: "starting", started_at: at - 5_000 },
+    { id: "q", name: "排队中", state: "queued", started_at: null },
+    { id: "run", name: "在跑", state: "running", started_at: at - 200_000 },
+  ];
+  expect(stuckJobs(jobs, at)).toEqual([{ id: "old", name: "卡死" }]);
 });

@@ -100,12 +100,33 @@ export async function commandRun(argv: string[]): Promise<number> {
   const header = `# gpulease run ${id} · ${parsed.name} · ${new Date(startedAt).toISOString()}\n# $ ${parsed.command.join(" ")}\n`;
   appendFileSync(logPath, header);
 
-  const child = Bun.spawn(parsed.command, {
-    cwd: parsed.cwd,
-    env,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  let child: ReturnType<typeof Bun.spawn>;
+  try {
+    child = Bun.spawn(parsed.command, {
+      cwd: parsed.cwd,
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+  } catch (err) {
+    // 起不来（Windows 上没有 echo 这种命令）也是失败：队列得知道，别让它永远停在 starting。
+    const detail = err instanceof Error ? err.message : String(err);
+    appendFileSync(logPath, `出错了：${detail}\n`);
+    console.error(`出错了：${detail}`);
+    if (parsed.jobId) {
+      try {
+        updateJob(db, parsed.jobId, {
+          state: "failed",
+          ended_at: Date.now(),
+          reason: `起不来：${detail.slice(0, 100)}`,
+        });
+      } catch {
+        /* 队列账记不上不影响退出码 */
+      }
+    }
+    db.close();
+    return 1;
+  }
 
   insertRun(db, {
     id,

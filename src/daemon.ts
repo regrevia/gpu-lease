@@ -9,10 +9,11 @@ import { postWebhook } from "./notify";
 import { stateDir } from "./paths";
 import { VERSION } from "./doctor";
 import { buildState } from "./state";
-import { occupiesSlot, place, type Card } from "./queue";
+import { occupiesSlot, place, stuckJobs, type Card } from "./queue";
 import { selfCommand } from "./self";
 import {
   insertEvent,
+  listJobs,
   markEventDelivery,
   openStore,
   queuedJobs,
@@ -207,6 +208,17 @@ export async function tick(
     db,
     state.tasks.map((t) => ({ run_id: t.run.id, verdict: t.verdict })),
   );
+  // 停在 starting 的活说明 run 没起来：标成 failed 让人看得见，别让队列无声地卡住在"以为在跑"。
+  const now = Date.now();
+  for (const stuck of stuckJobs(listJobs(db, 50), now)) {
+    updateJob(db, stuck.id, {
+      state: "failed",
+      ended_at: now,
+      reason: "起了但没跑起来（看 logs/wrapper-*.log）",
+    });
+    if (!opts.quiet) console.log(`${stamp(now)} 「${stuck.name}」起了但没跑起来，已标成失败`);
+  }
+
   if (!opts.noDispatch) {
     for (const line of await dispatchQueued(state)) {
       if (!opts.quiet) console.log(`${stamp(Date.now())} ${line}`);
