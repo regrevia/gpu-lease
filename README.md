@@ -63,7 +63,7 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 
 那条节点**没有 NVIDIA 显卡**，所以它验的是打包、CLI/JSON 契约、托管启动、进程归属、无卡降级；显卡数字与多卡行为要靠真机 `gpulease doctor --bundle` 的输出补。细节见 [Windows 真机验收](docs/05-windows-verification.md)。
 
-实测体积：**exe 109.9 MB，zip 52.2 MB**（Bun 运行时占绝大部分，`--minify` 无差别）。比调研阶段的官方口径大得多，按这个数字设计下载与首启体验。
+实测体积：**exe 110 MB，zip 52.2 MB**（Bun 运行时占绝大部分，`--minify` 无差别）。比调研阶段的官方口径大得多，按这个数字设计下载与首启体验。
 
 ## 文档
 

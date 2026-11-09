@@ -49,8 +49,10 @@ Windows 侧只用 `Win32_Process` 的四个字段：`ProcessId`、`ParentProcess
 
 | 事 | 实现 | 备注 |
 |---|---|---|
-| 一次枚举 | `Get-CimInstance Win32_Process \| ConvertTo-Json` | 8 s 超时；真机上 CIM 可能很慢（观测到接近 100 s），所以必须有上限 |
-| 失败回退 | `tasklist /FO CSV /NH` | 只有进程名和 pid，没有命令行和父子关系 |
+| 一次枚举 | `Get-CimInstance Win32_Process \| ConvertTo-Json` | 6 s 超时；真机上 CIM 可能很慢（观测到接近 100 s），所以必须有上限 |
+| 失败回退 ①| `Get-Process \| Select Id,ProcessName \| ConvertTo-Json` | .NET 自己枚举进程，**不碰 WMI**；只有 pid 和名字，`ppid=0`、`command=null` |
+| 失败回退 ②| `tasklist /FO CSV /NH` | 只有进程名和 pid；实测在某些 Win11 25H2 上会一直不返回，所以放最后 |
+| 缺字段怎么报 | `DoctorReport.wmi = "partial"` | 只拿到名字时明说"命令行为空"，不假装全知 |
 | 缓存 | 4 s | 面板 2 s 刷一次，不缓存就是每 2 s 起一个 PowerShell |
 | 存活判断 | `process.kill(pid, 0)` | 不读别人的环境变量，也不做提权 |
 
