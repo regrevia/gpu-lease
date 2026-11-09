@@ -20,6 +20,13 @@ describe("从日志尾巴里读进度", () => {
     expect(parseProgress(text)!.percent).toBe(50);
   });
 
+  test("tqdm 用 \\r 刷新同一行，照样能读到最新那条", () => {
+    const text = [" 5%|#         | 50/1000", "41%|####      | 410/1000", "42%|####      | 420/1000"].join(
+      "\r",
+    );
+    expect(parseProgress(text)!.percent).toBe(42);
+  });
+
   test("下载的大小进度", () => {
     const p = parseProgress("downloading model.safetensors: 1.2 GiB / 3.4 GiB");
     expect(p!.percent).toBe(35);

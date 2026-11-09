@@ -67,7 +67,8 @@ function parseEta(line: string): number | null {
  */
 export function parseProgress(text: string): Progress | null {
   if (!text) return null;
-  const lines = text.split(/\r?\n/);
+  // tqdm 在同一行里用 \r 覆盖刷新，所以换行符三种都要切。
+  const lines = text.split(/\r\n|\r|\n/);
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
     if (!line || line.startsWith("#")) continue;

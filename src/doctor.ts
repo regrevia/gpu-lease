@@ -11,7 +11,7 @@ import { stateDir } from "./paths";
 import type { DoctorReport } from "./types";
 import { probe } from "./collect/probe";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 
 async function eventLogCounts(): Promise<{ tdr_4101: number | null; nvlddmkm: number | null } | null> {
   if (!IS_WIN) return null;

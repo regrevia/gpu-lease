@@ -17,6 +17,7 @@ gpulease.exe
  ├─ supervisor   run.ts：spawn 子进程、注入环境变量、双路 tee 落日志、转发退出码
  ├─ collector    collect/smi.ts（唯一的 nvidia-smi 入口）+ collect/nvidia.ts（解析）
  │                + collect/winproc.ts（三级降级进程树），exec.ts 带硬超时
+  progress.ts      读日志尾巴里的进度（纯函数，宁可空着也不编）
  ├─ engine       attribute.ts（pid → 任务）+ rules.ts（判定）
  ├─ store        bun:sqlite，一张 runs 表，WAL
  ├─ http         server.ts：REST + SSE，127.0.0.1:7788

@@ -1,6 +1,6 @@
 {
   "name": "gpulease",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Windows 上的显卡值班员：哪张卡在跑哪个任务，还正常吗",
   "license": "MIT",
