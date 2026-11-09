@@ -236,7 +236,8 @@ jobs:
           $doc = & $exe doctor --json 2>&1 | Out-String
           if ($LASTEXITCODE -ne 0) { throw "doctor exited $LASTEXITCODE" }
           $docObj = $doc | ConvertFrom-Json
-          if (($docObj.notes -join " ") -notmatch "替身") { throw "doctor must disclose GPULEASE_SMI" }
+          # 中文在这个 shell 里会被按 OEM 代码页解码成乱码：断言只用 ASCII 标记。
+          if (($docObj.notes -join " ") -notmatch "GPULEASE_SMI") { throw "doctor must disclose that GPU data came from the stand-in command" }
           Write-Host "doctor discloses the stand-in command"
 
           Remove-Item Env:GPULEASE_SMI -ErrorAction SilentlyContinue
