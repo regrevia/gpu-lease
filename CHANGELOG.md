@@ -13,7 +13,8 @@
 
 ### 验证
 
-- tag 前最后一次全绿：Windows 门禁 run `42696447220`（`123097d2`）→ `conclusion=success`，17 步全过；`exe_bytes=115327488`（110 MB）、`zip_bytes=54743468`（52.2 MB）。
+- tag 前最后一次全绿：Windows 门禁 run `42696447220`（`123097d2`）→ `conclusion=success`，17 步全过。
+- 发出去的这一份：tag run `42713747045`（`c7befecf`）→ `conclusion=success`，`exe_bytes=115328000`（110 MB）、`zip_bytes=54743587`（52.2 MB）、`SHA256SUMS.txt` 172 字节；下载回来核对过：zip `sha256=cdced042…1603`、exe `sha256=01937ef9…418f`，与 `SHA256SUMS.txt` 一致。
 - 新两步的实跑输出：`history: ticks=2, card0_points=2, spark=                      ██, peak=97`、`perf: ticks=4, tick_avg=7127.8ms, tick_max=19631ms, cpu=0.5%, rss=27.9MB, peak=32.5MB`。
 - 这台节点这次进程层是 `unavailable`（CIM / Get-Process / tasklist 三条全超时），所以每轮采集 7–20 秒、任务归因只剩"自己起的子进程"。CPU 0.5%、常驻 28 MB 是监控自己的开销。有卡、进程层正常的机器上没验过具体刷新间隔。
 - 本机 macOS `bun test` 92 条绿 / 242 断言（0.3 的 77 条 + 历史 12 条 + 崩溃 2 条 + 浸泡 1 条）。

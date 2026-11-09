@@ -94,7 +94,9 @@
 - 新增第 13 步「perf budget」：`doctor --soak --seconds 20 --json`，实跑 `perf: ticks=4, tick_avg=7127.8ms, tick_max=19631ms, cpu=0.5%, rss=27.9MB, peak=32.5MB`。
   - **这台节点上每轮采集要 7 秒、最慢一轮 19.6 秒**，因为进程层三个探针全超时（见下），不是监控本身在烧 CPU（CPU 0.5%、常驻 28 MB）。所以门槛卡的是"时长真的达到 18 秒以上 + 轮数至少 3 + 内存与 CPU 上限"，不写死"每轮 < 1 秒"——写死等于要求机器别降级。
   - `tick_avg` 只算采集工作、不含睡眠：`avg × ticks ≤ 墙钟` 这条不变量在单测里锁住，否则把睡眠算进去会把开销报成 2 秒一轮。
-- 体积：`exe_bytes=115327488`（110 MB）、`zip_bytes=54743468`（52.2 MB）。
+- 体积（门禁 run 内构建）：`exe_bytes=115327488`（110 MB）、`zip_bytes=54743468`（52.2 MB）。
+- 发出去的这一份：tag run `42713747045`（`c7befecf`）→ `conclusion=success`，`exe_bytes=115328000`（110 MB）、`zip_bytes=54743587`（52.2 MB）、`SHA256SUMS.txt` 172 字节；下载回来核对过：zip `sha256=cdced042…1603`、exe `sha256=01937ef9…418f`，与 `SHA256SUMS.txt` 一致。
+- 这条发版路上踩到的两个 Windows 时序坑，都按"不写死毫秒数"改成结构断言：浸泡窗口原来被 `Math.min(120, …)` 夹到 2 分钟（1800 秒的请求实跑 121 秒）；`nvidia-smi` 挂住的用例在降级节点上要 13.5 秒才回来，于是给外部命令超时加了"一秒宽限后带着理由返回"。
 - 30 分钟长浸泡（`soak.yml`，`42700621031` / `5c6667b4`）：`seconds=1803.2`、`ticks=295`、`tick_avg=4868.2ms`、`tick_max=27822ms`、`cpu=0.8%`、`rss=40.6MB`（首轮 31.8 MB，涨 8.8 MB，峰值 48.9 MB）。工作流断言的是"跑够 1770 秒 + 至少 20 轮 + CPU < 40% + RSS < 200 MB + 峰值 < 350 MB + 增长 < 30 MB"，实际全部低于上限。
   - 295 轮 / 1803 秒 ≈ 平均每 6.1 秒一轮，比请求的 2 秒间隔慢——因为每轮采集本身要 4.9 秒（同一台降级节点）。这正是"不许把绝对毫秒数写死"的原因。
 - **进程层这次是 `unavailable` 而不是 `partial`**：`CIM 超时 6s；Get-Process 超时 6s；tasklist 超时 5s` 三条全失败。`diagnose subprocess layer` 是信息性步骤（`continue-on-error`），机器降级不是代码 bug，但两个后果要认：

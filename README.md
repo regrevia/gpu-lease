@@ -102,7 +102,7 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 
 ## 状态
 
-v0.4.0 已发布：`run` / `ls` / `watch` / `serve` / `submit` / `queue` / `cancel` / `daemon` / `alerts` / `history` / `doctor` 在本机 macOS 与 Windows 自托管节点上都跑过，`bun test` 92 条绿 / 242 断言，Windows 门禁（run `42696447220`）17 步全过，真机验到"历史跨值班进程重启累积""稀疏曲线留白不画成 0""浸泡量出监控自己的 CPU 与内存"。显卡数字（多卡、eGPU 断联、真机刷新间隔）还需要有卡的机器验。MIT。
+v0.4.0 已发布（[release](https://github.com/regrevia/gpu-lease/releases/tag/v0.4.0)，tag run `42713747045`）：`run` / `ls` / `watch` / `serve` / `submit` / `queue` / `cancel` / `daemon` / `alerts` / `history` / `doctor` 在本机 macOS 与 Windows 自托管节点上都跑过，`bun test` 92 条绿 / 242 断言，Windows 门禁（run `42696447220`）17 步全过，真机验到"历史跨值班进程重启累积""稀疏曲线留白不画成 0""浸泡量出监控自己的 CPU 与内存"。显卡数字（多卡、eGPU 断联、真机刷新间隔）还需要有卡的机器验。MIT。
 
 ## 没有 NVIDIA 卡也能验
 
