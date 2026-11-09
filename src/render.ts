@@ -87,7 +87,7 @@ export function taskLine(task: TaskView, color: boolean): string {
 }
 
 /** 进度只报日志里真读到的东西：百分比 + 原始计数 + 剩余时间（有才显示）。 */
-function progressText(task: TaskView): string {
+export function progressText(task: TaskView): string {
   const p = task.progress;
   if (!p) return "";
   const parts: string[] = [];
@@ -151,7 +151,7 @@ export function renderList(state: PanelState, opts: RenderOptions): string[] {
   for (const task of state.tasks) {
     const when = new Date(task.run.started_at).toLocaleString("zh-CN", { hour12: false });
     const label = paint(VERDICT_LABEL[task.verdict] ?? task.verdict, verdictColor(task.verdict), color);
-    lines.push(`${label}  ${when}  ${task.sentence}`);
+    lines.push(`${label}  ${when}  ${task.sentence}${progressText(task)}`);
   }
   if (!lines.length) lines.push(paint("还没有记录：用 gpulease run --name 训练 -- python train.py 起一个", C.dim, color));
   if (state.degraded.length) lines.push(paint(`· ${state.degraded[0]}`, C.dim, color));
