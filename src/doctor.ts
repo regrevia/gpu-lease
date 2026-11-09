@@ -5,6 +5,7 @@ import { readdirSync, readFileSync, statSync, writeFileSync, mkdirSync } from "n
 import { join } from "node:path";
 import { exec, IS_WIN } from "./collect/exec";
 import { snapshot } from "./collect/nvidia";
+import { smiCommand } from "./collect/smi";
 import { listProcesses } from "./collect/winproc";
 import { stateDir } from "./paths";
 import type { DoctorReport } from "./types";
@@ -36,6 +37,7 @@ export async function buildDoctor(opts: { probe?: boolean } = {}): Promise<Docto
   const event = await eventLogCounts();
 
   const notes: string[] = [];
+  if (smiCommand().fake) notes.push("显卡数据来自替身命令（GPULEASE_SMI），不是真驱动");
   if (nv.status === "absent") notes.push("没有 nvidia-smi：这台机器没有 NVIDIA 显卡，或驱动未装");
   if (nv.status === "error") notes.push(`nvidia-smi 报错：${nv.detail ?? ""}`);
   if (nv.gpus.length > 0) {

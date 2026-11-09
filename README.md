@@ -98,3 +98,15 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 ## 状态
 
 v0.1.0 代码完成：`run` / `ls` / `watch` / `serve` / `doctor` 五个入口在本机 macOS 与 Windows 自托管节点上都跑过，`bun test` 24 条绿，Windows 门禁验到"摘掉 Node 也能起子进程并把退出码传回来"。显卡数字（多卡、eGPU 断联）还需要有卡的机器验。MIT。
+
+## 没有 NVIDIA 卡也能验
+
+门禁跑在一台没有 NVIDIA 显卡的 Windows 机器上。为了不把"有卡时的逻辑"降级成"在 mac 上看看解析函数"，`nvidia-smi` 这一层是可注入的：
+
+```powershell
+$env:GPULEASE_SMI = "<bun 的绝对路径> test\\fixture\\smi.ts"
+$env:GPULEASE_SMI_SCENARIO = "two-gpu"    # two-gpu | single | absent | error | lost | permission | idle | timeout
+.\\gpulease.exe ls
+```
+
+替身按真 `nvidia-smi --format=csv,noheader,nounits` 的输出格式走，包括 WDDM 下按进程显存为 `[N/A]` 这件事。`doctor` 会明说"显卡数据来自替身"，不会把假数据当真卡报出去。这套开关同时是门禁的一部分：`bun test` 里有 10 条场景用例和 4 条 CLI 端到端用例，在 Windows 节点上跑。

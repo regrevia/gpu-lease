@@ -124,10 +124,17 @@ export function renderPanel(state: PanelState, opts: RenderOptions): string[] {
   return lines;
 }
 
-/** 一行式摘要，给 ls 用。 */
+/** 一行式摘要，给 ls 用：先卡，后任务。 */
 export function renderList(state: PanelState, opts: RenderOptions): string[] {
   const lines: string[] = [];
   const color = opts.color;
+  // ls 也要看一眼卡：多卡机器上"哪张空着"比"哪个任务"更常被问。
+  if (state.nvidia === "present" && state.gpus.length) {
+    for (const gpu of state.gpus) lines.push(gpuLine(gpu, color));
+    lines.push("");
+  } else if (state.nvidia !== "present") {
+    lines.push(paint(state.degraded[0] ?? "显卡不可用", C.dim, color));
+  }
   for (const task of state.tasks) {
     const when = new Date(task.run.started_at).toLocaleString("zh-CN", { hour12: false });
     const label = paint(VERDICT_LABEL[task.verdict] ?? task.verdict, verdictColor(task.verdict), color);
