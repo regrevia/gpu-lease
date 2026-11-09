@@ -72,6 +72,19 @@ export function openStore(path = `${stateDir()}/gpulease.db`): Database {
     )
   `);
   db.run("CREATE INDEX IF NOT EXISTS jobs_state ON jobs(state, priority DESC, created_at ASC)");
+  // 占用率历史：每张卡 15 秒一行、只留 24 小时。不是时序数据库——就三个数（util / 已用 / 总显存），
+  // 任务归属仍然从 runs 现算。没有这张表，"刚才是不是被打满了"只能靠记忆。
+  db.run(`
+    CREATE TABLE IF NOT EXISTS samples (
+      at INTEGER NOT NULL,
+      gpu INTEGER NOT NULL,
+      util INTEGER,
+      used_mb INTEGER,
+      total_mb INTEGER,
+      PRIMARY KEY (at, gpu)
+    )
+  `);
+  db.run("CREATE INDEX IF NOT EXISTS samples_at ON samples(at DESC)");
   return db;
 }
 
@@ -277,4 +290,38 @@ export function updateJob(db: Database, id: string, patch: Partial<Job>): void {
   if (!sets.length) return;
   values.push(id);
   db.run(`UPDATE jobs SET ${sets.join(", ")} WHERE id = ?`, values);
+}
+
+export type Sample = {
+  at: number;
+  gpu: number;
+  util: number | null;
+  used_mb: number | null;
+  total_mb: number | null;
+};
+
+export function insertSamples(db: Database, samples: Sample[]): void {
+  if (!samples.length) return;
+  const stmt = db.prepare(
+    `INSERT OR REPLACE INTO samples (at,gpu,util,used_mb,total_mb) VALUES (?,?,?,?,?)`,
+  );
+  db.transaction((rows: Sample[]) => {
+    for (const row of rows) stmt.run(row.at, row.gpu, row.util, row.used_mb, row.total_mb);
+  })(samples);
+}
+
+/** 从 since 开始（含）的采样，按时间升序。gpu 为 null 时给所有卡。 */
+export function listSamples(db: Database, since: number, gpu?: number | null): Sample[] {
+  if (gpu === null || gpu === undefined) {
+    return db
+      .query(`SELECT * FROM samples WHERE at >= ? ORDER BY at ASC`)
+      .all(since) as Sample[];
+  }
+  return db
+    .query(`SELECT * FROM samples WHERE at >= ? AND gpu = ? ORDER BY at ASC`)
+    .all(since, gpu) as Sample[];
+}
+
+export function pruneSamples(db: Database, before: number): number {
+  return db.run(`DELETE FROM samples WHERE at < ?`, [before]).changes;
 }

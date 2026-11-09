@@ -52,6 +52,31 @@ export function verdictColor(verdict: string): string {
   }
 }
 
+const SPARK = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+
+/**
+ * 把一串 0–100 的数压成一行方块，给人看趋势。
+ * 缺数据的段留空格——宁可断一截，也不拿相邻的值去填。
+ */
+export function sparkline(values: (number | null)[], cells = 24): string {
+  if (!values.length) return " ".repeat(cells);
+  const per = values.length / cells;
+  let out = "";
+  for (let i = 0; i < cells; i++) {
+    const start = Math.floor(i * per);
+    const end = Math.max(start + 1, Math.floor((i + 1) * per));
+    const slice = values.slice(start, end).filter((v): v is number => v !== null && Number.isFinite(v));
+    if (!slice.length) {
+      out += " ";
+      continue;
+    }
+    const avg = slice.reduce((a, b) => a + b, 0) / slice.length;
+    const idx = Math.max(0, Math.min(SPARK.length - 1, Math.round((avg / 100) * (SPARK.length - 1))));
+    out += SPARK[idx];
+  }
+  return out;
+}
+
 export function bar(used: number | null, total: number | null, cells = 10): string {
   if (!total || used === null) return "░".repeat(cells);
   const ratio = Math.max(0, Math.min(1, used / total));

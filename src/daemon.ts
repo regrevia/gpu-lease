@@ -13,9 +13,11 @@ import { occupiesSlot, place, stuckJobs, type Card } from "./queue";
 import { selfCommand } from "./self";
 import {
   insertEvent,
+  insertSamples,
   listJobs,
   markEventDelivery,
   openStore,
+  pruneSamples,
   queuedJobs,
   readVerdicts,
   updateJob,
@@ -176,6 +178,7 @@ export async function tick(
 ): Promise<TickResult> {
   const db = openStore();
   const state = await buildState({ includeEnded: false });
+  recordSamples(db, state.gpus, Date.now());
   const known = readVerdicts(db) as Map<string, string>;
   const planned = planAlerts(known as never, state.tasks);
   // 判定反复横跳时同一条毛病 10 分钟内只吵一次；冷却记在磁盘上，重启不重播。
@@ -231,6 +234,38 @@ export async function tick(
   return { alerts: alerts.length, tasks: state.tasks.length, errors };
 }
 
+/** 采样下限：15 秒一行/卡，24 小时约 5760 行，够看趋势又不把磁盘当草稿纸。 */
+export const SAMPLE_INTERVAL_MS = 15_000;
+export const SAMPLE_RETENTION_MS = 24 * 60 * 60_000;
+
+let lastSampleAt = 0;
+let lastPruneAt = 0;
+
+export function recordSamples(
+  db: ReturnType<typeof openStore>,
+  gpus: { index: number; util: number | null; vram_used_mb: number | null; vram_total_mb: number | null }[],
+  now: number,
+  force = false,
+): boolean {
+  if (!force && now - lastSampleAt < SAMPLE_INTERVAL_MS) return false;
+  lastSampleAt = now;
+  insertSamples(
+    db,
+    gpus.map((g) => ({
+      at: now,
+      gpu: g.index,
+      util: g.util,
+      used_mb: g.vram_used_mb,
+      total_mb: g.vram_total_mb,
+    })),
+  );
+  if (now - lastPruneAt >= 60 * 60_000) {
+    lastPruneAt = now;
+    pruneSamples(db, now - SAMPLE_RETENTION_MS);
+  }
+  return true;
+}
+
 function writeBeat(tasks: number, webhook: boolean, lastError: string | null): void {
   mkdirSync(stateDir(), { recursive: true });
   const status: DaemonStatus = {
@@ -242,6 +277,30 @@ function writeBeat(tasks: number, webhook: boolean, lastError: string | null): v
     last_error: lastError,
   };
   writeFileSync(beatPath(), JSON.stringify(status), "utf8");
+}
+
+/**
+ * 值班进程自己出事时留下的证据：写进 logs/daemon-crash-*.log，doctor --bundle 会一起带走。
+ * 不写就没有现场，用户只能说"它退出了"，我们只能说"不知道"。
+ */
+export function writeCrashLog(err: unknown, where: string, now = Date.now()): string | null {
+  try {
+    const dir = join(stateDir(), "logs");
+    mkdirSync(dir, { recursive: true });
+    const stampText = new Date(now).toISOString().replace(/[:.]/g, "-");
+    const path = join(dir, `daemon-crash-${stampText}.log`);
+    const body = [
+      `时间：${new Date(now).toISOString()}`,
+      `位置：${where}`,
+      `版本：${VERSION}`,
+      "",
+      err instanceof Error ? (err.stack ?? err.message) : String(err),
+    ].join("\n");
+    writeFileSync(path, body, "utf8");
+    return path;
+  } catch {
+    return null;
+  }
 }
 
 function stamp(at: number): string {
@@ -273,14 +332,35 @@ export async function runDaemon(opts: DaemonOptions = {}): Promise<number> {
   if (!opts.once) {
     process.on("SIGINT", stop);
     process.on("SIGTERM", stop);
+    process.on("uncaughtException", (err) => {
+      writeCrashLog(err, "uncaughtException");
+      process.exit(1);
+    });
+    process.on("unhandledRejection", (err) => {
+      writeCrashLog(err, "unhandledRejection");
+      process.exit(1);
+    });
   }
 
   try {
     if (!opts.quiet) {
       console.log(`值班开始：每 ${Math.round(interval / 1000)} 秒看一次${opts.webhook ? "，异常推送到 webhook" : ""}`);
     }
+    let badRounds = 0;
     for (;;) {
-      await tick({ webhook: opts.webhook, quiet: opts.quiet });
+      try {
+        await tick({ webhook: opts.webhook, quiet: opts.quiet });
+        badRounds = 0;
+      } catch (err) {
+        // 一轮采集炸了不该让值班停摆：记下来，下一轮接着看。连续 5 轮都炸说明环境坏了，退出留现场。
+        badRounds++;
+        const path = writeCrashLog(err, `tick 第 ${badRounds} 次失败`);
+        if (!opts.quiet) {
+          const detail = err instanceof Error ? err.message : String(err);
+          console.error(`这一轮出错了（连续 ${badRounds} 次）：${detail}${path ? ` 记录：${path}` : ""}`);
+        }
+        if (badRounds >= 5) return 1;
+      }
       if (opts.once) return 0;
       await Bun.sleep(interval);
     }

@@ -66,6 +66,22 @@ export type Sample = {
   degraded: string | null;
 };
 
+export type SoakReport = {
+  seconds: number;
+  /** 浸泡时的轮询间隔；默认值班是 5000ms，这里更密，CPU 占比只会更高，不会更漂亮 */
+  interval_ms: number;
+  ticks: number;
+  avg_tick_ms: number;
+  max_tick_ms: number;
+  cpu_pct: number;
+  rss_mb: number;
+  /** 第一轮之后的 RSS 与本轮 RSS 之差；长时间浸泡靠它看有没有泄漏 */
+  rss_start_mb: number;
+  rss_growth_mb: number;
+  peak_rss_mb: number;
+  heap_mb: number;
+};
+
 export type DoctorReport = {
   version: string;
   platform: string;

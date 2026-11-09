@@ -1,5 +1,20 @@
 # 变更记录
 
+## 0.4.0
+
+### 新增
+
+- `gpulease history [--minutes 30] [--gpu N] [--json]`：每张卡的占用率与显存占比画成 24 格方块曲线，给平均 / 峰值 / 现在。数据来自值班进程每 15 秒写一行的 `samples` 表，只留 24 小时；没有采样的时段留白，不显示成 0。
+- 值班进程跨重启累积历史：曲线在库里，不在内存里。
+- 值班进程自己出事时留现场：`logs/daemon-crash-<时间>.log`（时间 / 位置 / 版本 / 堆栈），`gpulease doctor --bundle` 会把它一起打包；一轮采集炸了不会让值班停摆，连续 5 轮才退出并留现场。
+- `gpulease doctor --soak [--seconds 30] [--json]`：连续跑若干轮采集，量出每轮耗时、CPU 占比、RSS / 峰值 RSS / 堆。
+- Windows 门禁加两步：`history across daemon restarts`（两次 `daemon --once` 间隔超过采样下限，断言跨重启累积、24 格、峰值来自占用率而不是显存）与 `perf budget`（20 秒浸泡，断言 RSS < 250 MB、峰值 < 350 MB、2 秒间隔下 CPU < 25%）。
+- `.github/workflows/soak.yml`：手动触发、45 分钟超时的长浸泡（默认 30 分钟），断言行数、CPU 与内存增长，数字写进运行摘要。
+
+### 验证
+
+待补：本次 tag 门禁运行号与浸泡实测数字。
+
 ## 0.3.0
 
 ### 新增

@@ -1,0 +1,97 @@
+name: soak
+
+# 长时间浸泡：值班进程连续跑 30 分钟，看它会不会越跑越胖、或者把 CPU 吃掉。
+# 手动触发，不跟着每次 push 跑——机器上只有一个 runner，长任务会把门禁堵住。
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "浸泡多少秒（默认 1800 = 30 分钟）"
+        required: false
+        default: "1800"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: soak-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  soak:
+    runs-on: [self-hosted, windows, x64, regrevia-win]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: resolve bun
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Continue"
+          $bun = $null
+          $onPath = Get-Command bun.exe -ErrorAction SilentlyContinue
+          if ($onPath) { $bun = $onPath.Source; Write-Host "bun: already on PATH" }
+          if (-not $bun) {
+            New-Item -ItemType Directory -Path .bun-tool -Force | Out-Null
+            npm install --prefix .bun-tool bun@latest --no-audit --no-fund 2>&1 | Write-Host
+            $bun = (Get-ChildItem -Path .bun-tool -Recurse -Filter bun.exe -File -ErrorAction SilentlyContinue |
+                    Select-Object -First 1).FullName
+          }
+          if (-not $bun) { throw "could not obtain bun.exe" }
+          Write-Host ("bun_version={0}" -f (& $bun --version))
+          "BUN_EXE=$bun" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: install
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (Test-Path bun.lock) { & $env:BUN_EXE install --frozen-lockfile } else { & $env:BUN_EXE install }
+          if ($LASTEXITCODE -ne 0) { throw "bun install failed" }
+
+      - name: build exe
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          & $env:BUN_EXE run build
+          if ($LASTEXITCODE -ne 0) { throw "bun run build failed" }
+
+      - name: soak
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $seconds = 1800
+          if ($env:SOAK_SECONDS -and $env:SOAK_SECONDS -match '^\d+$') { $seconds = [int]$env:SOAK_SECONDS }
+          if ($seconds -lt 60) { throw "soak needs at least 60 seconds, got $seconds" }
+          $exe = (Resolve-Path dist/gpulease.exe).Path
+          $env:GPULEASE_HOME = Join-Path $env:RUNNER_TEMP "gpulease-soak-$([guid]::NewGuid().ToString('N'))"
+          New-Item -ItemType Directory -Force -Path $env:GPULEASE_HOME | Out-Null
+
+          Write-Host "soak: $seconds seconds at a 2s interval (the shipped daemon polls every 5s)"
+          $raw = & $exe doctor --soak --seconds $seconds --json 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "doctor --soak exited $LASTEXITCODE" }
+          $soak = $raw | ConvertFrom-Json
+          if ($null -eq $soak) { throw "doctor --soak did not parse" }
+
+          $expected = [math]::Floor($seconds / 2 * 0.8)
+          if ($soak.ticks -lt $expected) { throw "soak ran $($soak.ticks) ticks, expected at least $expected" }
+          if ($soak.rss_mb -ge 200) { throw "soak rss was $($soak.rss_mb) MB, budget is under 200 MB" }
+          if ($soak.peak_rss_mb -ge 350) { throw "soak peak rss was $($soak.peak_rss_mb) MB, budget is under 350 MB" }
+          if ($soak.rss_growth_mb -ge 30) { throw "rss grew $($soak.rss_growth_mb) MB over the soak, budget is under 30 MB" }
+          if ($soak.cpu_pct -gt 25) { throw "soak cpu was $($soak.cpu_pct) percent at a 2s interval, budget is under 25" }
+
+          $lines = @(
+            "- seconds: $($soak.seconds)",
+            "- interval: $($soak.interval_ms) ms",
+            "- ticks: $($soak.ticks)",
+            "- tick avg / max: $($soak.avg_tick_ms) ms / $($soak.max_tick_ms) ms",
+            "- cpu: $($soak.cpu_pct) percent",
+            "- rss: $($soak.rss_mb) MB (first tick $($soak.rss_start_mb) MB, growth $($soak.rss_growth_mb) MB, peak $($soak.peak_rss_mb) MB)",
+            "- heap: $($soak.heap_mb) MB"
+          )
+          $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          foreach ($l in $lines) { Write-Host $l }
+
+          Remove-Item Env:GPULEASE_HOME -ErrorAction SilentlyContinue
+          $global:LASTEXITCODE = 0
+        env:
+          SOAK_SECONDS: ${{ inputs.seconds }}

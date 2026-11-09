@@ -14,6 +14,8 @@ $ gpulease ls
 
 （这是 v0.2 的输出形状：进度只报日志里真读到的数；读不到就不给数字，不给假数字。）
 
+v0.4 加了历史：`gpulease history` 把每张卡最近 30 分钟画成方块曲线（`--minutes 120` 看更久，`--gpu 1` 只看一张），值班进程每 15 秒记一行、留 24 小时——没有采样就直说没有，不拿 0 冒充"显卡很闲"。`gpulease doctor --soak --seconds 30` 量出值班自己的每轮耗时、CPU 与内存，数字直接进发布说明；值班进程自己炸了会在 `logs/daemon-crash-*.log` 留现场，`doctor --bundle` 一起带走。
+
 v0.3 加了排队：`gpulease submit --name "训练 SDXL LoRA" --need-vram 12 -- python train.py` 入列，`gpulease daemon` 常驻按每张卡的余量挑卡起跑，跑挂/断联自动让出卡位，出事推 `alerts`。命令与样例见 [变更记录](CHANGELOG.md#030)。
 
 ## 下载（Windows）
@@ -92,9 +94,9 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 
 ## 目前范围
 
-已做（v0.3）：采集 + 托管启动 + 归属 + 判定 + 进度 + `ls` / `watch` / `serve` 三个入口 + `doctor` 自检 + 诊断包 + 排队与常驻值班选卡 + 告警（冷却、`recovered` 照发）。
-在做（0.3）：`daemon` 常驻值班 + `alerts` 事件表 + webhook 推送（ntfy / 飞书 / 钉钉）+ 队列（`submit` / `queue` / `cancel`，daemon 按余量选卡自动起，跑挂的任务自动让出卡位，告警带 10 分钟冷却）。
-没做：托盘气泡、历史曲线、自动杀、多机。这些按 [路线](ROADMAP.md) 排。
+已做（v0.4）：采集 + 托管启动 + 归属 + 判定 + 进度 + `ls` / `watch` / `serve` 三个入口 + `doctor` 自检 + 诊断包 + 排队与常驻值班选卡 + 告警（冷却、`recovered` 照发）+ 占用率历史（`history`）+ 值班崩溃现场 + 开销自测（`doctor --soak`）。
+在做（0.5）：安装向导、可选开机自启、开始菜单、升级路径、故障排查文档。
+没做：托盘气泡、自动杀、多机、Linux / macOS 的生产支持。这些按 [路线](ROADMAP.md) 排。
 
 **验收标准：第一眼能看出"原来这是我的训练在跑，跑到哪了"。**
 

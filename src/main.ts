@@ -5,10 +5,19 @@ import { buildState } from "./state";
 import { renderList } from "./render";
 import { commandWatch } from "./tui";
 import { commandRun } from "./run";
-import { buildDoctor, renderDoctor, writeBundle, VERSION } from "./doctor";
+import { buildDoctor, renderDoctor, renderSoak, soak, writeBundle, VERSION } from "./doctor";
 import { startServer } from "./server";
 import { runDaemon, readDaemonStatus, daemonAlive } from "./daemon";
-import { getJob, insertJob, listEvents, listJobs, openStore, updateJob } from "./store";
+import {
+  getJob,
+  insertJob,
+  listEvents,
+  listJobs,
+  listSamples,
+  openStore,
+  updateJob,
+} from "./store";
+import { buildHistory, renderHistory } from "./history";
 
 const HELP = `gpulease ${VERSION} — 显卡值班员
 
@@ -22,7 +31,8 @@ const HELP = `gpulease ${VERSION} — 显卡值班员
   gpulease queue [--json]
   gpulease cancel <队列号>
   gpulease alerts [--json] [--limit 30]
-  gpulease doctor [--json] [--bundle]
+  gpulease history [--minutes 30] [--gpu N] [--json]
+  gpulease doctor [--json] [--bundle] [--soak [--seconds 30]]
   gpulease --version
 
 它只回答三个问题：哪张卡在跑哪个任务、还正常吗、出问题要不要你动手。
@@ -204,7 +214,42 @@ async function commandAlerts(argv: string[]): Promise<number> {
   return 0;
 }
 
+async function commandHistory(argv: string[]): Promise<number> {
+  const mArg = argv[argv.indexOf("--minutes") + 1];
+  const minutes = argv.includes("--minutes") && mArg ? Math.max(1, Number(mArg) || 30) : 30;
+  const gArg = argv[argv.indexOf("--gpu") + 1];
+  const onlyGpu = argv.includes("--gpu") && gArg ? Number(gArg) : null;
+
+  const now = Date.now();
+  const state = await buildState({ includeEnded: false });
+  const db = openStore();
+  const samples = listSamples(db, now - minutes * 60_000, onlyGpu);
+  db.close();
+
+  const gpus = state.gpus
+    .filter((g) => onlyGpu === null || g.index === onlyGpu)
+    .map((g) => ({ index: g.index, label: g.name }));
+  const history = buildHistory(gpus, samples, now, minutes);
+  if (argv.includes("--json")) {
+    console.log(JSON.stringify(history, null, 2));
+    return 0;
+  }
+  for (const line of renderHistory(history)) console.log(line);
+  return 0;
+}
+
 async function commandDoctor(argv: string[]): Promise<number> {
+  if (argv.includes("--soak")) {
+    const sArg = argv[argv.indexOf("--seconds") + 1];
+    const seconds = argv.includes("--seconds") && sArg ? Number(sArg) : 30;
+    const report = await soak({ seconds, intervalMs: 2000 });
+    if (argv.includes("--json")) {
+      console.log(JSON.stringify(report, null, 2));
+      return 0;
+    }
+    console.log(renderSoak(report));
+    return 0;
+  }
   if (argv.includes("--bundle")) {
     const path = await writeBundle();
     console.log(`诊断包已生成：${path}`);
@@ -247,6 +292,8 @@ export async function main(argv: string[]): Promise<number> {
       return await commandDaemon(rest);
     case "alerts":
       return await commandAlerts(rest);
+    case "history":
+      return await commandHistory(rest);
     case "serve":
       return commandServe(rest);
     case "doctor":

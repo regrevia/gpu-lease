@@ -358,6 +358,69 @@ jobs:
           Remove-Item Env:GPULEASE_STOP_FILE -ErrorAction SilentlyContinue
           $global:LASTEXITCODE = 0
 
+      - name: history across daemon restarts（占用率历史真的落到库里）
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          # 两次 --once 之间隔过 15 秒采样下限：历史必须跨进程重启累积，
+          # 否则"曲线"只是内存里的东西，值班一重启就归零。
+          $exe = (Resolve-Path dist/gpulease.exe).Path
+          $fixture = (Resolve-Path test/fixture/smi.ts).Path
+          $env:GPULEASE_SMI = "$env:BUN_EXE $fixture"
+          $env:GPULEASE_SMI_SCENARIO = "two-gpu"
+          $env:GPULEASE_HOME = Join-Path $env:RUNNER_TEMP "gpulease-hist-$([guid]::NewGuid().ToString('N'))"
+          New-Item -ItemType Directory -Force -Path $env:GPULEASE_HOME | Out-Null
+
+          & $exe daemon --once --quiet
+          if ($LASTEXITCODE -ne 0) { throw "first daemon --once exited $LASTEXITCODE (history)" }
+          Start-Sleep -Seconds 16
+          & $exe daemon --once --quiet
+          if ($LASTEXITCODE -ne 0) { throw "second daemon --once exited $LASTEXITCODE (history)" }
+
+          $raw = & $exe history --minutes 30 --json 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "history --json exited $LASTEXITCODE" }
+          $hist = $raw | ConvertFrom-Json
+          if ($null -eq $hist) { throw "history --json did not parse" }
+          if ($hist.ticks -lt 2) { throw "history ticks was $($hist.ticks), expected at least 2 across restarts" }
+          if ($hist.gpus.Count -lt 2) { throw "history covered $($hist.gpus.Count) cards, expected 2" }
+          $g0 = $hist.gpus | Where-Object { $_.index -eq 0 } | Select-Object -First 1
+          if (-not $g0) { throw "history has no card 0" }
+          if ($g0.util.points -lt 2) { throw "card 0 has $($g0.util.points) util points, expected 2" }
+          if ($g0.util.spark.Length -ne 24) { throw "spark length was $($g0.util.spark.Length), expected 24" }
+          # 替身卡 0 是 97%，峰值断言防止把显存占比糊到占用上。
+          if ($g0.util.peak -lt 90) { throw "card 0 util peak was $($g0.util.peak), expected around 97" }
+          $text = & $exe history --no-color 2>&1 | Out-String
+          if ($text -notmatch 'GPU 0') { throw "human history output does not name card 0" }
+          Write-Host "history: ticks=$($hist.ticks), card0_points=$($g0.util.points), spark=$($g0.util.spark), peak=$($g0.util.peak)"
+          Write-Host "history: card0 vram now $($g0.vram_used_gb) / $($g0.vram_total_gb) GB"
+
+          Remove-Item Env:GPULEASE_HOME -ErrorAction SilentlyContinue
+          Remove-Item Env:GPULEASE_SMI -ErrorAction SilentlyContinue
+          Remove-Item Env:GPULEASE_SMI_SCENARIO -ErrorAction SilentlyContinue
+          $global:LASTEXITCODE = 0
+
+      - name: perf budget（值班自己的开销，数字难看就是难看）
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          # 每 2 秒一轮跑 20 秒：比默认 5 秒更密，占比只会更高。
+          # 这台节点没有显卡、进程层只到 partial，慢是正常的；这里卡的是"别把监控做成负担"。
+          $exe = (Resolve-Path dist/gpulease.exe).Path
+          $env:GPULEASE_HOME = Join-Path $env:RUNNER_TEMP "gpulease-soak-$([guid]::NewGuid().ToString('N'))"
+          New-Item -ItemType Directory -Force -Path $env:GPULEASE_HOME | Out-Null
+          $raw = & $exe doctor --soak --seconds 20 --json 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "doctor --soak exited $LASTEXITCODE" }
+          $soak = $raw | ConvertFrom-Json
+          if ($null -eq $soak) { throw "doctor --soak did not parse" }
+          if ($soak.ticks -lt 8) { throw "soak ran only $($soak.ticks) ticks in $($soak.seconds)s" }
+          if ($soak.rss_mb -ge 250) { throw "soak rss was $($soak.rss_mb) MB, budget is under 250 MB" }
+          if ($soak.peak_rss_mb -ge 350) { throw "soak peak rss was $($soak.peak_rss_mb) MB, budget is under 350 MB" }
+          if ($soak.cpu_pct -gt 25) { throw "soak cpu was $($soak.cpu_pct) percent at a 2s interval, budget is under 25" }
+          Write-Host "perf: ticks=$($soak.ticks), tick_avg=$($soak.avg_tick_ms)ms, tick_max=$($soak.max_tick_ms)ms, cpu=$($soak.cpu_pct)%, rss=$($soak.rss_mb)MB, peak=$($soak.peak_rss_mb)MB"
+
+          Remove-Item Env:GPULEASE_HOME -ErrorAction SilentlyContinue
+          $global:LASTEXITCODE = 0
+
       - name: diagnose subprocess layer
         continue-on-error: true
         shell: pwsh
