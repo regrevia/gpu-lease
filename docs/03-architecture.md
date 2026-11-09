@@ -13,11 +13,14 @@
 
 ```
 gpulease.exe
- ├─ cli          main.ts：run / ls / watch / serve / doctor / --version
+ ├─ cli          main.ts：run / ls / watch / serve / daemon / alerts / doctor / --version
  ├─ supervisor   run.ts：spawn 子进程、注入环境变量、双路 tee 落日志、转发退出码
  ├─ collector    collect/smi.ts（唯一的 nvidia-smi 入口）+ collect/nvidia.ts（解析）
  │                + collect/winproc.ts（三级降级进程树），exec.ts 带硬超时
   progress.ts      读日志尾巴里的进度（纯函数，宁可空着也不编）
+  alerts.ts        什么时候该吵醒人（纯函数：只报变坏与恢复）
+  notify.ts        把一句话推到 webhook（ntfy / 飞书 / 钉钉 / 通用 JSON）
+  daemon.ts        常驻值班：单实例锁 + 心跳 + 每轮对比判定
  ├─ engine       attribute.ts（pid → 任务）+ rules.ts（判定）
  ├─ store        bun:sqlite，一张 runs 表，WAL
  ├─ http         server.ts：REST + SSE，127.0.0.1:7788

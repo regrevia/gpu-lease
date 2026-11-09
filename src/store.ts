@@ -31,6 +31,28 @@ export function openStore(path = `${stateDir()}/gpulease.db`): Database {
     )
   `);
   db.run("CREATE INDEX IF NOT EXISTS runs_started ON runs(started_at DESC)");
+  // 状态变化事件：只记"变坏"和"从坏恢复"，不记每次采样。没有这张表，重启就不知道上次到哪了。
+  db.run(`
+    CREATE TABLE IF NOT EXISTS events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      at INTEGER NOT NULL,
+      run_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      message TEXT NOT NULL,
+      delivered INTEGER NOT NULL DEFAULT 0,
+      detail TEXT
+    )
+  `);
+  db.run("CREATE INDEX IF NOT EXISTS events_at ON events(at DESC)");
+  // 每个任务最后一次判定，给 daemon 做前后对比用；过期的会被清掉，不无限长。
+  db.run(`
+    CREATE TABLE IF NOT EXISTS verdicts (
+      run_id TEXT PRIMARY KEY,
+      verdict TEXT NOT NULL,
+      at INTEGER NOT NULL
+    )
+  `);
   return db;
 }
 
@@ -115,4 +137,61 @@ export function activeRuns(db: Database): Run[] {
     .query(`SELECT * FROM runs WHERE ended_at IS NULL AND started_at > ? ORDER BY started_at DESC`)
     .all(cutoff) as Row[];
   return rows.map(toRun);
+}
+
+export type AlertEvent = {
+  id: number;
+  at: number;
+  run_id: string;
+  name: string;
+  kind: string;
+  message: string;
+  delivered: number;
+  detail: string | null;
+};
+
+export function insertEvent(
+  db: Database,
+  event: Omit<AlertEvent, "id" | "delivered" | "detail"> & { delivered?: number; detail?: string | null },
+): number {
+  const row = db
+    .query(
+      `INSERT INTO events (at,run_id,name,kind,message,delivered,detail) VALUES (?,?,?,?,?,?,?) RETURNING id`,
+    )
+    .get(
+      event.at,
+      event.run_id,
+      event.name,
+      event.kind,
+      event.message,
+      event.delivered ?? 0,
+      event.detail ?? null,
+    ) as { id: number };
+  return row.id;
+}
+
+export function markEventDelivery(db: Database, id: number, ok: boolean, detail: string): void {
+  db.run(`UPDATE events SET delivered = ?, detail = ? WHERE id = ?`, [ok ? 1 : 0, detail, id]);
+}
+
+export function listEvents(db: Database, limit = 50): AlertEvent[] {
+  return db.query(`SELECT * FROM events ORDER BY at DESC LIMIT ?`).all(limit) as AlertEvent[];
+}
+
+export function readVerdicts(db: Database): Map<string, string> {
+  const rows = db.query(`SELECT run_id, verdict FROM verdicts`).all() as {
+    run_id: string;
+    verdict: string;
+  }[];
+  return new Map(rows.map((r) => [r.run_id, r.verdict]));
+}
+
+/** 记住这一轮看到的判定；顺手清掉一周没出现过的，免得表一直长。 */
+export function writeVerdicts(db: Database, tasks: { run_id: string; verdict: string }[], at = Date.now()): void {
+  const stmt = db.query(
+    `INSERT INTO verdicts (run_id,verdict,at) VALUES (?,?,?)
+     ON CONFLICT(run_id) DO UPDATE SET verdict = excluded.verdict, at = excluded.at`,
+  );
+  for (const task of tasks) stmt.run(task.run_id, task.verdict, at);
+  db.run(`DELETE FROM verdicts WHERE at < ?`, [at - 7 * 24 * 3600_000]);
 }

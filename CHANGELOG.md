@@ -1,5 +1,14 @@
 # 变更记录
 
+## 未发布
+
+### 新增
+
+- `gpulease daemon`：常驻值班。每轮看一遍状态，只在**变坏**或**从坏恢复**时说话；单实例（`daemon.lock`），心跳写 `daemon.json`。
+- `gpulease alerts`：本地事件表，看历史告警与推送是否成功。
+- 推送：`--webhook` 或 `GPULEASE_WEBHOOK`，认 ntfy、飞书、钉钉、通用 JSON；推不出去也留在本地，不会因为网络问题丢掉告警。
+- 告警判据（`src/alerts.ts`，纯函数）：`failed` / `lost` / `stalled` / `suspect` 才打扰；`slow` 只是趋势不算事件；首次见到就不对劲也报；重启不会把"正常"重播一遍。
+
 ## 0.2.0
 
 这一版只做一件事：**进度**。训练脚本、ComfyUI 出图、模型下载都会往外打字，那就读这些字，不猜、不编。
@@ -22,7 +31,7 @@
 
 - `bun test` 55 条：新增进度解析 12 条、上屏 4 条（含 `\r` 刷新、超过 100%、分母为 0、日志不存在）。
 - Windows 门禁加了一条活任务断言：真起一个打 tqdm 行的子进程，`ls --json` 里要读到 `percent=42` / `label=420/1000` / `eta_sec=47`，人读那行要出现 `42%`。这条断言第一次跑就抓到两个真问题：进度只在 watch 面板上屏、`ls` 那行漏了；以及人读断言取值的时机（任务一结束进度按设计消失）。
-- 门禁 run id 与体积见 [Windows 验证](docs/05-windows-verification.md)。
+- 门禁 run `42660390025`（`c472b575`）全绿，`v0.2.0` tag 的门禁 run 走到 `publish release` 成功：`exe_bytes=115304960`、`zip_bytes=54736271`；本地重新下载 zip 算 SHA256 = `a4f195b7…cadfeb8`，与 `SHA256SUMS.txt` 一致。
 
 ## 0.1.0
 

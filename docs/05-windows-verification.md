@@ -83,3 +83,14 @@
 - 远端 release：`gpulease-windows-x64.zip` 54735323 字节 + `SHA256SUMS.txt`（exe 与 zip 两行）。
 - 本地重新下载 zip 后算 SHA256 = `a2969f9e…a82851`，与文件里 zip 那行一致。
 - `process_layer=partial detail=只有进程名，命令行为空（CIM 超时 6s）`：这台机器读不到命令行，属于**预期降级**，不是失败。
+
+### v0.2.0 的实际证据（2026-11-10）
+
+- 门禁 run `42658107537`（`dc39fc02`）与 `42660390025`（`c472b575`）均为 `conclusion=success`；后者是 tag 前的最后一次全绿。
+- 新增第 10 步「progress from a live run」：真起一个打 tqdm 行的子进程（` 42%|####      | 420/1000 [00:31<00:47, 9.8it/s]`），轮询 `ls --json` 直到读到进度，断言 `percent=42`、`label=420/1000`、`eta_sec=47`；在同一次命中点再抓 `ls --no-color`，断言人读那行含 `42%`。
+- 这条断言抓出两个真问题，值得记住：
+  1. 进度只有 `watch` 面板上屏，`ls` 那行漏了——JSON 断言全过，人读断言才抓到。**新字段必须同时断言人读与 JSON 两条路。**
+  2. 不能在子进程退出后再读进度：任务一结束进度按设计变 `null`（历史要结论不要半截数字），取值必须落在轮询命中的那一刻。
+- 收尾：`finally` 写 stop 文件让子进程自己退，再 `Stop-Process` wrapper；Windows 上杀 wrapper 不会带走子进程，这个握手是必须的。
+- 体积：`exe_bytes=115304960`、`zip_bytes=54736271`；tag `v0.2.0` 的门禁 run `42660878983` 走到 `publish release` 成功，release 资产 `gpulease-windows-x64.zip` 54736271 字节 + `SHA256SUMS.txt` 172 字节；下载后自算 zip SHA256 = `a4f195b7…cadfeb8`，与文件里 zip 那行一致。
+- 本机 macOS `bun test` 62 条绿（v0.2 的 55 条 + 告警 7 条）。

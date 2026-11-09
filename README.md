@@ -16,7 +16,7 @@ $ gpulease ls
 
 ## 下载（Windows）
 
-**[gpulease 0.1.0](https://github.com/regrevia/gpu-lease/releases/tag/v0.1.0)** → `gpulease-windows-x64.zip`（52.2 MB），解压得到 `gpulease.exe`（110 MB）。
+**[gpulease 0.2.0](https://github.com/regrevia/gpu-lease/releases/tag/v0.2.0)** → `gpulease-windows-x64.zip`（54,736,271 字节 / 52.2 MB），解压得到 `gpulease.exe`（115,304,960 字节 / 110 MB）。
 旁边 `SHA256SUMS.txt` 里有 exe 与 zip 两行，先核对再运行：
 
 ```powershell
@@ -91,7 +91,8 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 ## 目前范围
 
 已做（v0.2）：采集 + 托管启动 + 归属 + 判定 + 进度 + `ls` / `watch` / `serve` 三个入口 + `doctor` 自检 + 诊断包。
-没做：托盘、告警推送（气泡/ntfy）、历史曲线、自动杀、自动调度、多机。这些按 [路线](docs/02-product-design.md) 排。
+在做（0.3）：`daemon` 常驻值班 + `alerts` 事件表 + webhook 推送（ntfy / 飞书 / 钉钉），之后是队列与自动起任务。
+没做：托盘气泡、历史曲线、自动杀、自动调度、多机。这些按 [路线](docs/02-product-design.md) 排。
 
 **验收标准：第一眼能看出"原来这是我的训练在跑，跑到哪了"。**
 
