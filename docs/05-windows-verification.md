@@ -86,6 +86,19 @@
 - 本地重新下载 zip 后算 SHA256 = `a2969f9e…a82851`，与文件里 zip 那行一致。
 - `process_layer=partial detail=只有进程名，命令行为空（CIM 超时 6s）`：这台机器读不到命令行，属于**预期降级**，不是失败。
 
+### v0.4.0 的实际证据（2026-11-10）
+
+- tag 前最后一次全绿：门禁 run `42696447220`（`123097d2`）→ `conclusion=success`，17 步全过（`publish release` 与 `artifact` 只在 tag / 分支上分头跑）。
+- 新增第 12 步「history across daemon restarts」：假 provider 喂双卡，两次 `daemon --once` 之间隔 16 秒跨过 15 秒采样下限，再用 `history --minutes 30 --json` 读回。实跑输出：`history: ticks=2, card0_points=2, spark=                      ██, peak=97`，`history: card0 vram now 17.8 / 24 GB`。
+  - 这条断言锁住三件事：历史真的落库（跨进程重启还在）、稀疏数据靠右画（22 个空格 + 2 个方块，不假装一直那么高）、峰值取的是占用率而不是显存占比。
+- 新增第 13 步「perf budget」：`doctor --soak --seconds 20 --json`，实跑 `perf: ticks=4, tick_avg=7127.8ms, tick_max=19631ms, cpu=0.5%, rss=27.9MB, peak=32.5MB`。
+  - **这台节点上每轮采集要 7 秒、最慢一轮 19.6 秒**，因为进程层三个探针全超时（见下），不是监控本身在烧 CPU（CPU 0.5%、常驻 28 MB）。所以门槛卡的是"时长真的达到 18 秒以上 + 轮数至少 3 + 内存与 CPU 上限"，不写死"每轮 < 1 秒"——写死等于要求机器别降级。
+  - `tick_avg` 只算采集工作、不含睡眠：`avg × ticks ≤ 墙钟` 这条不变量在单测里锁住，否则把睡眠算进去会把开销报成 2 秒一轮。
+- 体积：`exe_bytes=115327488`（110 MB）、`zip_bytes=54743468`（52.2 MB）。
+- **进程层这次是 `unavailable` 而不是 `partial`**：`CIM 超时 6s；Get-Process 超时 6s；tasklist 超时 5s` 三条全失败。`diagnose subprocess layer` 是信息性步骤（`continue-on-error`），机器降级不是代码 bug，但两个后果要认：
+  1. 这台节点上任务归因只能靠"自己起的子进程"，外部进程一律看不到——面板会如实说看不到，不编。
+  2. 一轮采集可能吃掉十几秒，值班的实际刷新变慢。这不是"每 5 秒一轮"的承诺，是这台机器的上限；有卡、进程层正常的机器上没验过具体数字。
+
 ### v0.3.0 的实际证据（2026-11-10）
 
 - tag 前最后一次全绿：门禁 run `42679530072`（`3bb22289`）→ `conclusion=success`，第 1–16 步全过（第 15 步 `publish release` 只在 tag 上跑，第 17 步 `scaffold only` 是空仓库兜底，按设计跳过）。

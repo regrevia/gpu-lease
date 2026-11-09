@@ -8,12 +8,15 @@
 - 值班进程跨重启累积历史：曲线在库里，不在内存里。
 - 值班进程自己出事时留现场：`logs/daemon-crash-<时间>.log`（时间 / 位置 / 版本 / 堆栈），`gpulease doctor --bundle` 会把它一起打包；一轮采集炸了不会让值班停摆，连续 5 轮才退出并留现场。
 - `gpulease doctor --soak [--seconds 30] [--json]`：连续跑若干轮采集，量出每轮耗时、CPU 占比、RSS / 峰值 RSS / 堆。
-- Windows 门禁加两步：`history across daemon restarts`（两次 `daemon --once` 间隔超过采样下限，断言跨重启累积、24 格、峰值来自占用率而不是显存）与 `perf budget`（20 秒浸泡，断言 RSS < 250 MB、峰值 < 350 MB、2 秒间隔下 CPU < 25%）。
+- Windows 门禁加两步：`history across daemon restarts`（两次 `daemon --once` 间隔超过采样下限，断言跨重启累积、24 格、峰值来自占用率而不是显存）与 `perf budget`（20 秒浸泡，断言实际跑够 18 秒、轮数 ≥ 3、RSS < 250 MB、峰值 < 350 MB、2 秒间隔下 CPU < 40%）。上限故意留宽：这台节点上进程层三个探针全超时，一轮采集要 7 秒、最慢一轮 19.6 秒，卡死数字等于要求机器别降级。
 - `.github/workflows/soak.yml`：手动触发、45 分钟超时的长浸泡（默认 30 分钟），断言行数、CPU 与内存增长，数字写进运行摘要。
 
 ### 验证
 
-待补：本次 tag 门禁运行号与浸泡实测数字。
+- tag 前最后一次全绿：Windows 门禁 run `42696447220`（`123097d2`）→ `conclusion=success`，17 步全过；`exe_bytes=115327488`（110 MB）、`zip_bytes=54743468`（52.2 MB）。
+- 新两步的实跑输出：`history: ticks=2, card0_points=2, spark=                      ██, peak=97`、`perf: ticks=4, tick_avg=7127.8ms, tick_max=19631ms, cpu=0.5%, rss=27.9MB, peak=32.5MB`。
+- 这台节点这次进程层是 `unavailable`（CIM / Get-Process / tasklist 三条全超时），所以每轮采集 7–20 秒、任务归因只剩"自己起的子进程"。CPU 0.5%、常驻 28 MB 是监控自己的开销。有卡、进程层正常的机器上没验过具体刷新间隔。
+- 本机 macOS `bun test` 92 条绿 / 242 断言（0.3 的 77 条 + 历史 12 条 + 崩溃 2 条 + 浸泡 1 条）。
 
 ## 0.3.0
 

@@ -102,7 +102,7 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 
 ## 状态
 
-v0.3.0 已发布：`run` / `ls` / `watch` / `serve` / `submit` / `queue` / `cancel` / `daemon` / `alerts` / `doctor` 在本机 macOS 与 Windows 自托管节点上都跑过，`bun test` 77 条绿 / 184 断言，Windows 门禁（tag `v0.3.0`，run `42682120449`）走到 `publish release` 成功，真机验到"队列里的活自己上卡跑完并回写 `run_id`""放不下的活带着理由等""进度从活任务日志里读出来并上屏"。显卡数字（多卡、eGPU 断联）还需要有卡的机器验。MIT。
+v0.4.0 已发布：`run` / `ls` / `watch` / `serve` / `submit` / `queue` / `cancel` / `daemon` / `alerts` / `history` / `doctor` 在本机 macOS 与 Windows 自托管节点上都跑过，`bun test` 92 条绿 / 242 断言，Windows 门禁（run `42696447220`）17 步全过，真机验到"历史跨值班进程重启累积""稀疏曲线留白不画成 0""浸泡量出监控自己的 CPU 与内存"。显卡数字（多卡、eGPU 断联、真机刷新间隔）还需要有卡的机器验。MIT。
 
 ## 没有 NVIDIA 卡也能验
 
