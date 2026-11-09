@@ -245,6 +245,58 @@ jobs:
           Remove-Item Env:GPULEASE_HOME -ErrorAction SilentlyContinue
           $global:LASTEXITCODE = 0
 
+      - name: queue dispatch against the exe（排队 → 自己上卡）
+        if: hashFiles('package.json') != ''
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          # 用双卡替身：卡 0 剩 6330 MB（够 4 GB），卡 1 剩 4987 MB。20 GB 的活哪张都放不下。
+          $exe = (Resolve-Path dist/gpulease.exe).Path
+          $fixture = (Resolve-Path test/fixture/smi.ts).Path
+          if ($env:BUN_EXE -match "\s" -or $fixture -match "\s") {
+            throw "GPULEASE_SMI 用空格切参数，路径不能含空格：$env:BUN_EXE | $fixture"
+          }
+          $env:GPULEASE_SMI = "$env:BUN_EXE $fixture"
+          $env:GPULEASE_SMI_SCENARIO = "two-gpu"
+          $env:GPULEASE_HOME = Join-Path $env:RUNNER_TEMP "gpulease-queue-$([guid]::NewGuid().ToString('N'))"
+          New-Item -ItemType Directory -Force -Path $env:GPULEASE_HOME | Out-Null
+
+          & $exe submit --name q-fit --need-vram 4096 -- cmd /c echo queue-ran
+          if ($LASTEXITCODE -ne 0) { throw "submit q-fit exited $LASTEXITCODE" }
+          & $exe submit --name q-wait --need-vram 20000 -- cmd /c echo never
+          if ($LASTEXITCODE -ne 0) { throw "submit q-wait exited $LASTEXITCODE" }
+
+          & $exe daemon --once --quiet | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "daemon --once exited $LASTEXITCODE" }
+
+          function Get-Queue {
+            return ((& $exe queue --json 2>&1 | Out-String) | ConvertFrom-Json)
+          }
+
+          $fit = Get-Queue | Where-Object { $_.name -eq "q-fit" }
+          $wait = Get-Queue | Where-Object { $_.name -eq "q-wait" }
+          if ($null -eq $fit) { throw "q-fit missing from the queue" }
+          if ($fit.gpu -ne 0) { throw "q-fit must land on card 0 (the only card with enough free vram), got $($fit.gpu)" }
+          if ($wait.state -ne "queued") { throw "q-wait needs 20 GB and cannot fit; state must stay queued, got $($wait.state)" }
+          if ([string]::IsNullOrWhiteSpace($wait.reason)) { throw "q-wait must carry the reason it is waiting" }
+          Write-Host "queue: q-fit placed on card 0, q-wait explains why it waits"
+
+          for ($i = 0; $i -lt 15; $i++) {
+            $fit = Get-Queue | Where-Object { $_.name -eq "q-fit" }
+            if ($fit.state -eq "done") { break }
+            Start-Sleep -Seconds 2
+          }
+          if ($fit.state -ne "done") { throw "q-fit did not finish, state=$($fit.state)" }
+          if ($null -eq $fit.run_id) { throw "q-fit finished without a run_id" }
+          $logs = Join-Path $env:GPULEASE_HOME "logs"
+          if (-not (Select-String -Path (Join-Path $logs "*.log") -Pattern "queue-ran" -Quiet)) {
+            throw "the queued command never actually ran (no queue-ran in logs)"
+          }
+          Write-Host "queue: queued command really ran, run_id=$($fit.run_id)"
+
+          Remove-Item Env:GPULEASE_SMI -ErrorAction SilentlyContinue
+          Remove-Item Env:GPULEASE_SMI_SCENARIO -ErrorAction SilentlyContinue
+
       - name: progress from a live run（进度只认日志里的证据）
         shell: powershell
         run: |

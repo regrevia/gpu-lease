@@ -8,7 +8,7 @@ import { commandRun } from "./run";
 import { buildDoctor, renderDoctor, writeBundle, VERSION } from "./doctor";
 import { startServer } from "./server";
 import { runDaemon, readDaemonStatus, daemonAlive } from "./daemon";
-import { listEvents, openStore } from "./store";
+import { getJob, insertJob, listEvents, listJobs, openStore, updateJob } from "./store";
 
 const HELP = `gpulease ${VERSION} — 显卡值班员
 
@@ -18,6 +18,9 @@ const HELP = `gpulease ${VERSION} — 显卡值班员
   gpulease watch [--fast] [--no-color]
   gpulease serve [--port 7788] [--host 127.0.0.1]
   gpulease daemon [--interval 5000] [--webhook URL] [--once]
+  gpulease submit --name 训练 [--need-vram 12] [--priority 5] -- python train.py
+  gpulease queue [--json]
+  gpulease cancel <队列号>
   gpulease alerts [--json] [--limit 30]
   gpulease doctor [--json] [--bundle]
   gpulease --version
@@ -53,6 +56,113 @@ async function commandServe(argv: string[]): Promise<number> {
     process.on("SIGINT", stop);
     process.on("SIGTERM", stop);
   });
+}
+
+const JOB_STATE_LABEL: Record<string, string> = {
+  queued: "排队",
+  starting: "起",
+  running: "在跑",
+  done: "完成",
+  failed: "失败",
+  cancelled: "取消",
+};
+
+function newJobId(now = Date.now()): string {
+  return `q${now.toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+}
+
+type SubmitOptions = { name: string; needMb: number; priority: number; command: string[] };
+
+function parseSubmit(argv: string[]): SubmitOptions | { error: string } {
+  let name: string | null = null;
+  let needMb = 0;
+  let priority = 0;
+  const rest: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--") {
+      rest.push(...argv.slice(i + 1));
+      break;
+    }
+    if (arg === "--name" || arg === "-n") name = argv[++i] ?? null;
+    else if (arg === "--need-vram") needMb = Math.max(0, Number(argv[++i] ?? 0) || 0);
+    else if (arg === "--priority" || arg === "-p") priority = Number(argv[++i] ?? 0) || 0;
+    else rest.push(arg);
+  }
+  if (!name) return { error: "缺少 --name（给这个任务起个你认得出的名字）" };
+  if (!rest.length) return { error: "缺少要执行的命令（用 -- 隔开，例如 -- python train.py）" };
+  return { name, needMb, priority, command: rest };
+}
+
+async function commandSubmit(argv: string[]): Promise<number> {
+  const parsed = parseSubmit(argv);
+  if ("error" in parsed) {
+    console.error(parsed.error);
+    return 2;
+  }
+  const db = openStore();
+  const id = newJobId();
+  insertJob(db, {
+    id,
+    name: parsed.name,
+    command: JSON.stringify(parsed.command),
+    cwd: process.cwd(),
+    need_mb: parsed.needMb,
+    priority: parsed.priority,
+  });
+  const ahead = listJobs(db, 200).filter((job) => job.state === "queued" && job.id !== id).length;
+  console.log(`已入队 ${id}：「${parsed.name}」${parsed.needMb ? `要 ${parsed.needMb} MB 显存` : ""}`);
+  console.log(
+    ahead ? `前面还有 ${ahead} 个 · 用 gpulease queue 看进度` : "排队等卡 · 起 gpulease daemon 就会自动上卡",
+  );
+  return 0;
+}
+
+async function commandQueue(argv: string[]): Promise<number> {
+  const db = openStore();
+  const jobs = listJobs(db, 50);
+  if (argv.includes("--json")) {
+    console.log(JSON.stringify(jobs, null, 2));
+    return 0;
+  }
+  if (!jobs.length) {
+    console.log("队列是空的：用 gpulease submit --name 训练 -- python train.py 排一个");
+    return 0;
+  }
+  for (const job of jobs) {
+    const label = JOB_STATE_LABEL[job.state] ?? job.state;
+    const gpu = job.gpu === null ? "" : ` · 卡 ${job.gpu}`;
+    const need = job.need_mb ? ` · 要 ${fmtMb(job.need_mb)}` : "";
+    const reason = job.reason ? ` · ${job.reason}` : "";
+    const run = job.run_id ? ` · ${job.run_id}` : "";
+    console.log(`${label}  ${job.id}  ${job.name}${need}${gpu}${reason}${run}`);
+  }
+  return 0;
+}
+
+async function commandCancel(argv: string[]): Promise<number> {
+  const id = argv.find((arg) => !arg.startsWith("-"));
+  if (!id) {
+    console.error("用法：gpulease cancel <队列号>（gpulease queue 里那一列）");
+    return 2;
+  }
+  const db = openStore();
+  const job = getJob(db, id);
+  if (!job) {
+    console.error(`没有这个队列号：${id}`);
+    return 1;
+  }
+  if (job.state !== "queued") {
+    console.error(`「${job.name}」现在是「${JOB_STATE_LABEL[job.state] ?? job.state}」，只有排队中的能取消`);
+    return 1;
+  }
+  updateJob(db, id, { state: "cancelled", ended_at: Date.now(), reason: "手动取消" });
+  console.log(`已取消 ${id}「${job.name}」`);
+  return 0;
+}
+
+function fmtMb(mb: number): string {
+  return mb >= 1024 ? `${(mb / 1024).toFixed(mb % 1024 === 0 ? 0 : 1)} GB` : `${mb} MB`;
 }
 
 async function commandDaemon(argv: string[]): Promise<number> {
@@ -127,6 +237,12 @@ export async function main(argv: string[]): Promise<number> {
       return commandLs(rest);
     case "watch":
       return commandWatch(rest);
+    case "submit":
+      return await commandSubmit(rest);
+    case "queue":
+      return await commandQueue(rest);
+    case "cancel":
+      return await commandCancel(rest);
     case "daemon":
       return await commandDaemon(rest);
     case "alerts":

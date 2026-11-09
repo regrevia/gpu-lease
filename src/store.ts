@@ -53,6 +53,25 @@ export function openStore(path = `${stateDir()}/gpulease.db`): Database {
       at INTEGER NOT NULL
     )
   `);
+  // 队列：submit 入队，daemon 看哪张卡空着就起。状态只有五个，够用。
+  db.run(`
+    CREATE TABLE IF NOT EXISTS jobs (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      command TEXT NOT NULL,
+      cwd TEXT NOT NULL,
+      need_mb INTEGER NOT NULL DEFAULT 0,
+      priority INTEGER NOT NULL DEFAULT 0,
+      state TEXT NOT NULL DEFAULT 'queued',
+      run_id TEXT,
+      gpu INTEGER,
+      created_at INTEGER NOT NULL,
+      started_at INTEGER,
+      ended_at INTEGER,
+      reason TEXT
+    )
+  `);
+  db.run("CREATE INDEX IF NOT EXISTS jobs_state ON jobs(state, priority DESC, created_at ASC)");
   return db;
 }
 
@@ -194,4 +213,68 @@ export function writeVerdicts(db: Database, tasks: { run_id: string; verdict: st
   );
   for (const task of tasks) stmt.run(task.run_id, task.verdict, at);
   db.run(`DELETE FROM verdicts WHERE at < ?`, [at - 7 * 24 * 3600_000]);
+}
+
+export type JobState = "queued" | "starting" | "running" | "done" | "failed" | "cancelled";
+
+export type Job = {
+  id: string;
+  name: string;
+  /** JSON 数组：argv。存字符串会丢引号，Windows 路径里有空格就完了。 */
+  command: string;
+  cwd: string;
+  need_mb: number;
+  priority: number;
+  state: JobState;
+  run_id: string | null;
+  gpu: number | null;
+  created_at: number;
+  started_at: number | null;
+  ended_at: number | null;
+  reason: string | null;
+};
+
+export function insertJob(
+  db: Database,
+  job: Pick<Job, "id" | "name" | "command" | "cwd" | "need_mb" | "priority"> & { created_at?: number },
+): void {
+  db.run(
+    `INSERT INTO jobs (id,name,command,cwd,need_mb,priority,created_at) VALUES (?,?,?,?,?,?,?)`,
+    [job.id, job.name, job.command, job.cwd, job.need_mb, job.priority, job.created_at ?? Date.now()],
+  );
+}
+
+export function listJobs(db: Database, limit = 30): Job[] {
+  return db.query(`SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?`).all(limit) as Job[];
+}
+
+export function queuedJobs(db: Database): Job[] {
+  return db
+    .query(`SELECT * FROM jobs WHERE state = 'queued' ORDER BY priority DESC, created_at ASC`)
+    .all() as Job[];
+}
+
+export function getJob(db: Database, id: string): Job | null {
+  return db.query(`SELECT * FROM jobs WHERE id = ?`).get(id) as Job | null;
+}
+
+export function updateJob(db: Database, id: string, patch: Partial<Job>): void {
+  const allowed: (keyof Job)[] = [
+    "state",
+    "run_id",
+    "gpu",
+    "started_at",
+    "ended_at",
+    "reason",
+  ];
+  const sets: string[] = [];
+  const values: (string | number | null)[] = [];
+  for (const key of allowed) {
+    if (!(key in patch)) continue;
+    sets.push(`${key} = ?`);
+    values.push(patch[key] as string | number | null);
+  }
+  if (!sets.length) return;
+  values.push(id);
+  db.run(`UPDATE jobs SET ${sets.join(", ")} WHERE id = ?`, values);
 }

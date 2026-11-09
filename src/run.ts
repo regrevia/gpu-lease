@@ -5,11 +5,13 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { dirname } from "node:path";
 import { logDir } from "./paths";
-import { insertRun, openStore, updateRun } from "./store";
+import { insertRun, openStore, updateJob, updateRun } from "./store";
 
 export type RunOptions = {
   name: string;
   gpu: number | null;
+  /** 由 daemon 从队列里起的时候带着；手动 run 是 null */
+  jobId: string | null;
   logPath: string | null;
   cwd: string;
   command: string[];
@@ -19,6 +21,7 @@ export function parseRunArgs(argv: string[]): RunOptions | { error: string } {
   let name: string | null = null;
   let gpu: number | null = null;
   let logPath: string | null = null;
+  let jobId: string | null = null;
   const rest: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -34,6 +37,8 @@ export function parseRunArgs(argv: string[]): RunOptions | { error: string } {
       gpu = raw !== undefined && /^\d+$/.test(raw) ? Number(raw) : null;
     } else if (arg === "--log") {
       logPath = argv[++i] ?? null;
+    } else if (arg === "--job") {
+      jobId = argv[++i] ?? null;
     } else {
       rest.push(arg);
     }
@@ -41,7 +46,7 @@ export function parseRunArgs(argv: string[]): RunOptions | { error: string } {
 
   if (!name) return { error: "缺少 --name（给这个任务起个你认得出的名字）" };
   if (rest.length === 0) return { error: "缺少要执行的命令（用 -- 隔开，例如 -- python train.py）" };
-  return { name, gpu, logPath, cwd: process.cwd(), command: rest };
+  return { name, gpu, jobId, logPath, cwd: process.cwd(), command: rest };
 }
 
 export function newRunId(now = Date.now()): string {
@@ -117,6 +122,21 @@ export async function commandRun(argv: string[]): Promise<number> {
     last_output_at: startedAt,
   });
 
+  // 队列里起的活：把 run 挂回 job，队列那边才知道它真的在跑了。
+  if (parsed.jobId) {
+    try {
+      updateJob(db, parsed.jobId, {
+        state: "running",
+        run_id: id,
+        gpu: parsed.gpu,
+        started_at: startedAt,
+        reason: null,
+      });
+    } catch {
+      /* 队列账记不上不影响任务 */
+    }
+  }
+
   // 输出既进日志也上屏；同时把"最后有输出的时间"记下来——判定全靠它。
   let lastFlush = 0;
   const touch = () => {
@@ -164,6 +184,17 @@ export async function commandRun(argv: string[]): Promise<number> {
 
   const endedAt = Date.now();
   updateRun(db, id, { ended_at: endedAt, exit_code: code, last_output_at: endedAt });
+  if (parsed.jobId) {
+    try {
+      updateJob(db, parsed.jobId, {
+        state: code === 0 ? "done" : "failed",
+        ended_at: endedAt,
+        reason: code === 0 ? "完成" : `退出码 ${code}`,
+      });
+    } catch {
+      /* 同上 */
+    }
+  }
   appendFileSync(logPath, `# exited ${code} after ${Math.round((endedAt - startedAt) / 1000)}s\n`);
 
   const verdict =

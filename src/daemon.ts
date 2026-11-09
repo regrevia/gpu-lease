@@ -9,13 +9,18 @@ import { postWebhook } from "./notify";
 import { stateDir } from "./paths";
 import { VERSION } from "./doctor";
 import { buildState } from "./state";
+import { place, type Card } from "./queue";
+import { selfCommand } from "./self";
 import {
   insertEvent,
   markEventDelivery,
   openStore,
+  queuedJobs,
   readVerdicts,
+  updateJob,
   writeVerdicts,
 } from "./store";
+import type { PanelState } from "./state";
 
 export type DaemonStatus = {
   pid: number;
@@ -50,10 +55,84 @@ export function daemonAlive(now = Date.now()): boolean {
   }
 }
 
+/**
+ * 把排队里的活分到卡上并真的起。只在卡可用时动；分不进去就把"为什么在等"写回队列，
+ * 让人在 `gpulease queue` 里看到的是原因，不是干等。
+ */
+export async function dispatchQueued(
+  state: PanelState,
+  opts: { dryRun?: boolean } = {},
+): Promise<string[]> {
+  const db = openStore();
+  const jobs = queuedJobs(db);
+  if (!jobs.length) return [];
+
+  const cards: Card[] = state.gpus.map((gpu) => ({
+    index: gpu.index,
+    label: `GPU ${gpu.index}`,
+    usable: true,
+    total_mb: gpu.vram_total_mb,
+    used_mb: gpu.vram_used_mb,
+    util: gpu.util,
+  }));
+
+  const inUse = new Map<number, number>();
+  for (const task of state.tasks) {
+    if (task.run.gpu_hint === null) continue;
+    inUse.set(task.run.gpu_hint, (inUse.get(task.run.gpu_hint) ?? 0) + 1);
+  }
+
+  const assignments = place(
+    jobs.map((job) => ({ id: job.id, name: job.name, need_mb: job.need_mb, created_at: job.created_at })),
+    cards,
+    inUse,
+  );
+
+  const started: string[] = [];
+  for (const assignment of assignments) {
+    const job = jobs.find((item) => item.id === assignment.id);
+    if (!job) continue;
+    if (assignment.gpu === null) {
+      // 理由会变（比如从"还没看到卡"变成"余量不够"），变了才写，省得每轮都动库。
+      if (job.reason !== assignment.reason) updateJob(db, job.id, { reason: assignment.reason });
+      continue;
+    }
+
+    updateJob(db, job.id, { state: "starting", gpu: assignment.gpu, reason: assignment.reason });
+    const line = `开始「${job.name}」→ ${assignment.reason}`;
+    started.push(line);
+    if (opts.dryRun) continue;
+
+    try {
+      const argv = JSON.parse(job.command) as string[];
+      const child = Bun.spawn(
+        selfCommand(["run", "--name", job.name, "--gpu", String(assignment.gpu), "--job", job.id, "--", ...argv]),
+        {
+          cwd: job.cwd,
+          env: { ...(process.env as Record<string, string>), GPULEASE_HOME: stateDir() },
+          stdio: ["ignore", "ignore", "ignore"],
+        },
+      );
+      try {
+        child.unref();
+      } catch {
+        /* 老版本 Bun 没有 unref，进程退出时会自己断 */
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      updateJob(db, job.id, { state: "queued", reason: `起不来：${reason.slice(0, 100)}` });
+      started.push(`「${job.name}」起不来：${reason.slice(0, 100)}`);
+    }
+  }
+  return started;
+}
+
 type TickResult = { alerts: number; tasks: number; errors: string[] };
 
 /** 单独一轮：测试与 --once 都走它。 */
-export async function tick(opts: { webhook?: string | null; quiet?: boolean } = {}): Promise<TickResult> {
+export async function tick(
+  opts: { webhook?: string | null; quiet?: boolean; noDispatch?: boolean } = {},
+): Promise<TickResult> {
   const db = openStore();
   const state = await buildState({ includeEnded: false });
   const known = readVerdicts(db) as Map<string, string>;
@@ -84,6 +163,12 @@ export async function tick(opts: { webhook?: string | null; quiet?: boolean } = 
     db,
     state.tasks.map((t) => ({ run_id: t.run.id, verdict: t.verdict })),
   );
+  if (!opts.noDispatch) {
+    for (const line of await dispatchQueued(state)) {
+      if (!opts.quiet) console.log(`${stamp(Date.now())} ${line}`);
+    }
+  }
+
   writeBeat(state.tasks.length, Boolean(opts.webhook), errors[0] ?? null);
   return { alerts: alerts.length, tasks: state.tasks.length, errors };
 }
