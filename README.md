@@ -43,6 +43,12 @@ gpulease ls / status / logs <id> / stop <id> / doctor
 
 单文件、无 Node 依赖、常驻 < 40 MB。[技术决策](docs/03-architecture.md)
 
+## 只做 Windows
+
+Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、一套权限模型、一个诚实的信息模型（Windows 拿不到按进程显存，就说整卡占用，不编数字）。面板只保留三种形态：终端 TUI、`127.0.0.1:7788` 单页、v0.2 的托盘气泡。不引入 Electron、不引入前端框架。
+
+面板的视觉语法借自两个可合法复用的项目（nvitop 的 TUI 密度、gpustat-web 的单页结构），代码自己写；GPL 项目只看不抄。详见 [面板复用与范围收窄](docs/06-ui-and-scope.md)。
+
 ## Windows 验收
 
 产物不是"我们机器上编译过"，而是在真的 Windows 上跑过才算数。自托管节点 `regrevia-gpu-lease`（Windows 11，管理员服务）承接 `.github/workflows/windows-gate.yml`：编译单文件 exe → 摘掉 PATH 里的 Node 再跑 → `doctor --json` / `ls --json` 必须可解析 → `--fake-gpu` 验解析与规则 → 出 SHA256 → tag 才发 Release。
