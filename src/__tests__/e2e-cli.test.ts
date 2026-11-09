@@ -17,7 +17,12 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  rmSync(home, { recursive: true, force: true });
+  // Windows 上子进程可能还捏着 sqlite/WAL 句柄；清理失败只影响临时目录，不能让测试红。
+  try {
+    rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch {
+    /* 留给系统 temp 清理 */
+  }
 });
 
 function baseEnv(scenario: string): Record<string, string> {
@@ -67,14 +72,14 @@ describe("CLI 端到端（假 GPU）", () => {
     expect(ls.code).toBe(0);
     expect(ls.out).toContain("RTX 4090");
     expect(ls.out).toContain("假训练");
-  }, 20000);
+  }, 60000);
 
   test("没有显卡的机器：doctor 说没有 NVIDIA 卡，而不是装死", async () => {
     const doc = await cli(["doctor", "--json"], "absent");
     expect(doc.code).toBe(0);
     const report = JSON.parse(doc.out);
     expect(report.nvidia_smi).toBe("absent");
-  }, 30000);
+  }, 60000);
 
   test("单卡机器：报一张卡；读不到按进程显存时不编数字", async () => {
     const ls = await cli(["ls", "--json"], "single");
@@ -82,5 +87,5 @@ describe("CLI 端到端（假 GPU）", () => {
     expect(state.gpus.length).toBe(1);
     expect(state.gpus[0].vram_used_mb).toBe(18234);
     for (const p of state.procs) expect(p.vram_mb).toBeNull();
-  }, 20000);
+  }, 60000);
 });

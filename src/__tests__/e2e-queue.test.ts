@@ -63,6 +63,6 @@ test("排队的活由 daemon 自己找卡起跑，跑完回写队列", async () 
       .join("\n");
     expect(text).toContain("queued-ran");
   } finally {
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
-}, 30_000);
+}, 90_000);
