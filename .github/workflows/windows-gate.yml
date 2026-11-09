@@ -172,6 +172,78 @@ jobs:
 
       # 信息性一步：进程层采不到时，把每条子进程路径的耗时/退出码打出来，便于定位。
       # continue-on-error：诊断信息不该把门禁变红。
+      - name: gpu scenarios against the exe（这台节点没有 NVIDIA 卡）
+        if: hashFiles('package.json') != ''
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          # 节点上没有 NVIDIA 显卡：把 nvidia-smi 换成替身，验"有卡时"的整条链路。
+          # 这是本仓库唯一能在真 Windows 上验多卡/断联/驱动报错的办法。
+          $exe = (Resolve-Path dist/gpulease.exe).Path
+          $fixture = (Resolve-Path test/fixture/smi.ts).Path
+          if ($env:BUN_EXE -match "\s" -or $fixture -match "\s") {
+            throw "GPULEASE_SMI 用空格切参数，路径不能含空格：$env:BUN_EXE | $fixture"
+          }
+          $env:GPULEASE_SMI = "$env:BUN_EXE $fixture"
+          # 假数据写进临时状态目录，别和真 smoke 记录混在一起。
+          $env:GPULEASE_HOME = Join-Path $env:RUNNER_TEMP "gpulease-fake-$([guid]::NewGuid().ToString('N'))"
+          New-Item -ItemType Directory -Force -Path $env:GPULEASE_HOME | Out-Null
+
+          function Get-State([string]$scenario) {
+            $env:GPULEASE_SMI_SCENARIO = $scenario
+            $raw = & $exe ls --json 2>&1 | Out-String
+            if ($LASTEXITCODE -ne 0) { throw "ls --json ($scenario) exited $LASTEXITCODE" }
+            return $raw | ConvertFrom-Json
+          }
+
+          # 1) 双卡异型号：两张卡各读各的，不串味
+          $two = Get-State "two-gpu"
+          if ($two.gpus.Count -ne 2) { throw "two-gpu: expected 2 cards, got $($two.gpus.Count)" }
+          if ($two.gpus[0].name -notmatch "4090") { throw "two-gpu: card 0 is $($two.gpus[0].name)" }
+          if ($two.gpus[1].name -notmatch "4060") { throw "two-gpu: card 1 is $($two.gpus[1].name)" }
+          if ($two.gpus[0].vram_total_mb -ne 24564 -or $two.gpus[1].vram_total_mb -ne 8188) { throw "two-gpu: vram totals crossed" }
+          if ($two.gpus[0].uuid -eq $two.gpus[1].uuid) { throw "two-gpu: cards share a uuid" }
+          Write-Host "two-gpu: 2 cards, 4090 + 4060, uuid distinct"
+
+          # 2) 单卡机器不许凭空多一张
+          $one = Get-State "single"
+          if ($one.gpus.Count -ne 1) { throw "single: expected 1 card, got $($one.gpus.Count)" }
+
+          # 3) 无卡：状态必须说 absent，不许假装 present
+          $none = Get-State "absent"
+          if ($none.nvidia -ne "absent") { throw "absent: nvidia=$($none.nvidia)" }
+
+          # 4) 驱动连不上：error，并把驱动原话带出来
+          $err = Get-State "error"
+          if ($err.nvidia -ne "error") { throw "error: nvidia=$($err.nvidia)" }
+          if (($err.degraded -join " ") -notmatch "communicate") { throw "error: driver message lost" }
+
+          # 5) 卡在、按进程表读不到：卡数据保留，进程表为空，不崩
+          $lost = Get-State "lost"
+          if ($lost.gpus.Count -ne 2) { throw "lost: cards should still be readable" }
+          if ($null -ne $lost.procs -and $lost.procs.Count -ne 0) { throw "lost: procs should be empty" }
+
+          # 6) WDDM 下按进程显存是 [N/A]：上层必须留 null，不许编数字
+          $full = Get-State "two-gpu"
+          foreach ($p in $full.procs) { if ($null -ne $p.vram_mb) { throw "per-process vram must stay null on WDDM, got $($p.vram_mb)" } }
+
+          # 7) 人读的那一行也得有卡名
+          $env:GPULEASE_SMI_SCENARIO = "two-gpu"
+          $text = & $exe ls --no-color 2>&1 | Out-String
+          if ($text -notmatch "RTX 4090") { throw "ls --no-color lost the card name" }
+
+          # 8) doctor 必须说明数据来自替身，不能把假数据当真卡
+          $doc = & $exe doctor --json 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "doctor exited $LASTEXITCODE" }
+          $docObj = $doc | ConvertFrom-Json
+          if (($docObj.notes -join " ") -notmatch "替身") { throw "doctor must disclose GPULEASE_SMI" }
+          Write-Host "doctor discloses the stand-in command"
+
+          Remove-Item Env:GPULEASE_SMI -ErrorAction SilentlyContinue
+          Remove-Item Env:GPULEASE_SMI_SCENARIO -ErrorAction SilentlyContinue
+          Remove-Item Env:GPULEASE_HOME -ErrorAction SilentlyContinue
+          $global:LASTEXITCODE = 0
+
       - name: diagnose subprocess layer
         continue-on-error: true
         shell: pwsh
