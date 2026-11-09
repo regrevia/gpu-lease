@@ -47,6 +47,10 @@ gpulease ls / status / logs <id> / stop <id> / doctor
 
 产物不是"我们机器上编译过"，而是在真的 Windows 上跑过才算数。自托管节点 `regrevia-gpu-lease`（Windows 11，管理员服务）承接 `.github/workflows/windows-gate.yml`：编译单文件 exe → 摘掉 PATH 里的 Node 再跑 → `doctor --json` / `ls --json` 必须可解析 → `--fake-gpu` 验解析与规则 → 出 SHA256 → tag 才发 Release。
 
+第一次真实跑通（2026-11-09）：[windows-gate #42588508102](https://github.com/regrevia/gpu-lease/actions/runs/42588508102) 绿——Bun 1.4.4 编译出单文件 exe，摘掉 PATH 里的 Node 后 `--version` / `doctor --json` / `ls --json` / `--fake-gpu` 全部通过，`smoke=ok`。
+
+实测体积：**exe 109.9 MB，zip 52.2 MB**（运行时占绝大部分，`--minify` 无差别）。比调研阶段的官方口径大得多，按这个数字设计下载与首启体验。
+
 这条节点**没有 NVIDIA 显卡**，所以它验的是打包、CLI、JSON 契约、无卡降级；有卡的判断要靠真机 `gpulease doctor --dump` 的输出来补。细节见 [Windows 真机验收](docs/05-windows-verification.md)。
 
 ## 文档
@@ -67,4 +71,4 @@ gpulease ls / status / logs <id> / stop <id> / doctor
 
 ## 状态
 
-调研、竞品分析、产品设计、架构、Windows 打包与真机验收管线完成。代码未开工（等你点头）。MIT。
+调研、竞品分析、产品设计、架构、Windows 打包与真机验收管线完成，Windows 上检出可运行 exe。产品代码未开工（等你点头）。MIT。
