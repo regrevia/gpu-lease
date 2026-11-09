@@ -73,7 +73,7 @@ export type DoctorReport = {
   nvidia_smi: "present" | "absent" | "error";
   nvidia_smi_detail: string | null;
   gpus: Gpu[];
-  wmi: "ok" | "unavailable" | "timeout";
+  wmi: "ok" | "partial" | "unavailable" | "timeout";
   wmi_detail: string | null;
   event_log: { tdr_4101: number | null; nvlddmkm: number | null } | null;
   store_path: string;

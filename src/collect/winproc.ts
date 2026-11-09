@@ -44,6 +44,27 @@ export function parseCimJson(raw: string): ProcessInfo[] {
   return out;
 }
 
+export function parseGetProcessJson(raw: string): ProcessInfo[] {
+  const text = raw.trim();
+  if (!text) return [];
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  const rows = Array.isArray(data) ? data : [data];
+  const out: ProcessInfo[] = [];
+  for (const row of rows) {
+    const o = row as Record<string, unknown>;
+    const pid = Number(o.Id);
+    const name = typeof o.ProcessName === "string" ? o.ProcessName : "";
+    if (!Number.isFinite(pid) || pid <= 0) continue;
+    out.push({ pid, ppid: 0, name, command: null });
+  }
+  return out;
+}
+
 export function parseTasklist(raw: string): ProcessInfo[] {
   const out: ProcessInfo[] = [];
   for (const line of raw.split(/\r?\n/)) {
@@ -66,8 +87,14 @@ export async function listProcesses(opts: { refresh?: boolean; timeoutMs?: numbe
     return { procs: cache.procs, degraded: cache.degraded };
   }
 
+  // 三级降级：CIM（有命令行和父进程）→ Get-Process（只有名字）→ tasklist（只有名字）。
+  // 实测某台 Win11 25H2 上 tasklist 会一直不回（4.5s 被杀、0 字节），CIM 也超时，
+  // 但 Get-Process 是 .NET 自己的进程枚举，不碰 WMI，能在服务账号下正常返回。
   const timeoutMs = opts.timeoutMs ?? 8000;
-  const ps = await exec(
+  let procs: ProcessInfo[] = [];
+  let degraded: string | null = null;
+
+  const cim = await exec(
     [
       POWERSHELL,
       "-NoProfile",
@@ -75,23 +102,38 @@ export async function listProcesses(opts: { refresh?: boolean; timeoutMs?: numbe
       "-Command",
       "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress",
     ],
-    { timeoutMs },
+    { timeoutMs: Math.min(timeoutMs, 6000) },
   );
-  const cimReason = why(ps, timeoutMs);
-
-  let procs: ProcessInfo[] = [];
-  let degraded: string | null = null;
-
-  if (ps.code === 0 && ps.stdout.trim()) {
-    procs = parseCimJson(ps.stdout);
+  if (cim.code === 0 && cim.stdout.trim()) procs = parseCimJson(cim.stdout);
+  if (procs.length > 0) {
+    cache = { at: Date.now(), procs, degraded: null };
+    return { procs, degraded: null };
   }
-  if (procs.length === 0) {
-    const tl = await exec([TASKLIST, "/FO", "CSV", "/NH"], { timeoutMs: 5000 });
-    procs = tl.code === 0 ? parseTasklist(tl.stdout) : [];
-    degraded = procs.length
-      ? `命令行不可用（CIM ${cimReason}，只有进程名）`
-      : `进程层不可用（CIM ${cimReason}；tasklist ${why(tl, 5000)}）`;
+  const cimReason = why(cim, Math.min(timeoutMs, 6000));
+
+  const gp = await exec(
+    [
+      POWERSHELL,
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "Get-Process | Select-Object Id,ProcessName | ConvertTo-Json -Compress",
+    ],
+    { timeoutMs: Math.min(timeoutMs, 6000) },
+  );
+  if (gp.code === 0 && gp.stdout.trim()) procs = parseGetProcessJson(gp.stdout);
+  if (procs.length > 0) {
+    degraded = `只有进程名，命令行为空（CIM ${cimReason}）`;
+    cache = { at: Date.now(), procs, degraded };
+    return { procs, degraded };
   }
+  const gpReason = why(gp, Math.min(timeoutMs, 6000));
+
+  const tl = await exec([TASKLIST, "/FO", "CSV", "/NH"], { timeoutMs: 5000 });
+  if (tl.code === 0) procs = parseTasklist(tl.stdout);
+  degraded = procs.length
+    ? `只有进程名，命令行为空（CIM ${cimReason}；Get-Process ${gpReason}）`
+    : `进程层不可用（CIM ${cimReason}；Get-Process ${gpReason}；tasklist ${why(tl, 5000)}）`;
 
   cache = { at: Date.now(), procs, degraded };
   return { procs, degraded };

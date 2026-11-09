@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { parseCsvLine, parseGpus, parseProcs } from "../collect/nvidia";
-import { parseCimJson, parseTasklist, descendants } from "../collect/winproc";
+import { parseCimJson, parseTasklist, parseGetProcessJson, descendants } from "../collect/winproc";
 import { judge, worst, humanDuration } from "../rules";
 import { attribute } from "../attribute";
 import { parseRunArgs, newRunId } from "../run";
@@ -194,4 +194,22 @@ test("时长说人话", () => {
   expect(humanDuration(8)).toBe("8 秒");
   expect(humanDuration(125)).toBe("2 分钟");
   expect(humanDuration(7300)).toBe("2 小时 2 分钟");
+});
+
+describe("Get-Process 降级（没有 WMI 时只剩进程名）", () => {
+  test("数组形式", () => {
+    const rows = parseGetProcessJson('[{"Id":4,"ProcessName":"System"},{"Id":1234,"ProcessName":"python"}]');
+    expect(rows.length).toBe(2);
+    expect(rows[1]).toEqual({ pid: 1234, ppid: 0, name: "python", command: null });
+  });
+  test("单条时 PowerShell 返回对象而不是数组", () => {
+    const rows = parseGetProcessJson('{"Id":9,"ProcessName":"python"}');
+    expect(rows.length).toBe(1);
+    expect(rows[0].pid).toBe(9);
+  });
+  test("坏 JSON 与空输入不抛", () => {
+    expect(parseGetProcessJson("")).toEqual([]);
+    expect(parseGetProcessJson("not json")).toEqual([]);
+    expect(parseGetProcessJson('[{"ProcessName":"x"}]')).toEqual([]);
+  });
 });

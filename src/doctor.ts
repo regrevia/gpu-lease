@@ -53,7 +53,7 @@ export async function buildDoctor(opts: { probe?: boolean } = {}): Promise<Docto
     nvidia_smi: nv.status,
     nvidia_smi_detail: nv.detail,
     gpus: nv.gpus,
-    wmi: procLayer.procs.length > 0 ? "ok" : procLayer.degraded ? "unavailable" : "ok",
+    wmi: procLayer.procs.length === 0 ? "unavailable" : procLayer.degraded ? "partial" : "ok",
     wmi_detail: procLayer.degraded,
     event_log: event,
     store_path: join(stateDir(), "gpulease.db"),
@@ -73,7 +73,8 @@ export function renderDoctor(report: DoctorReport): string {
     lines.push(`  #${gpu.index} ${gpu.name} · ${mem} · 利用率 ${gpu.util ?? "?"}% · 驱动 ${gpu.driver ?? "?"}`);
   }
   lines.push("");
-  lines.push(`进程层：${report.wmi === "ok" ? "可读" : "不可读"}${report.wmi_detail ? `（${report.wmi_detail}）` : ""}`);
+  const layer = report.wmi === "ok" ? "可读（含命令行）" : report.wmi === "partial" ? "只读到进程名" : "不可读";
+  lines.push(`进程层：${layer}${report.wmi_detail ? `（${report.wmi_detail}）` : ""}`);
   if (report.event_log) {
     lines.push(`驱动事件（24 小时）：超时恢复 ${report.event_log.tdr_4101 ?? "?"} 次 · nvlddmkm ${report.event_log.nvlddmkm ?? "?"} 条`);
   }

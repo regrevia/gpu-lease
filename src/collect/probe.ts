@@ -20,6 +20,7 @@ const CASES: { label: string; cmd: string[] }[] = [
   { label: "tasklist（PATH）", cmd: ["tasklist", "/FO", "CSV", "/NH"] },
   { label: "tasklist（绝对）", cmd: [`${SYS_ROOT}\\System32\\tasklist.exe`, "/FO", "CSV", "/NH"] },
   { label: "powershell（绝对）", cmd: [`${SYS_ROOT}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`, "-NoProfile", "-NonInteractive", "-Command", "Write-Output probe"] },
+  { label: "Get-Process", cmd: [`${SYS_ROOT}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`, "-NoProfile", "-NonInteractive", "-Command", "Get-Process | Select-Object Id,ProcessName | ConvertTo-Json -Compress"] },
   { label: "wmic", cmd: ["wmic", "process", "get", "ProcessId,ParentProcessId", "/format:csv"] },
 ];
 
@@ -40,6 +41,10 @@ export async function probe(timeoutMs = 4000): Promise<ProbeRow[]> {
   for (const c of CASES) {
     out.push(row(c.label, c.cmd, await exec(c.cmd, { timeoutMs })));
   }
+  // tasklist 单独给 12 秒：它到底是慢还是死，差一个更大的超时才能区分。
+  out.push(
+    row("tasklist（12 秒超时）", [`${SYS_ROOT}\\System32\\tasklist.exe`, "/FO", "CSV", "/NH"], await exec([`${SYS_ROOT}\\System32\\tasklist.exe`, "/FO", "CSV", "/NH"], { timeoutMs: 12000 })),
+  );
   return out;
 }
 
