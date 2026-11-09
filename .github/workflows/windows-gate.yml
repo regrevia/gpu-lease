@@ -245,6 +245,54 @@ jobs:
           Remove-Item Env:GPULEASE_HOME -ErrorAction SilentlyContinue
           $global:LASTEXITCODE = 0
 
+      - name: progress from a live run（进度只认日志里的证据）
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          # 真起一个会打 tqdm 行的子进程，再从 exe 的 ls --json 里确认读到了进度。
+          # 子进程靠 "停" 文件退出：Windows 上 stop 掉包装器不会顺带杀掉子进程。
+          $exe = (Resolve-Path dist/gpulease.exe).Path
+          $home2 = Join-Path $env:RUNNER_TEMP "gpulease-prog-$([guid]::NewGuid().ToString('N'))"
+          New-Item -ItemType Directory -Force -Path $home2 | Out-Null
+          $env:GPULEASE_HOME = $home2
+          $stop = Join-Path $home2 "stop"
+          $env:GPULEASE_STOP_FILE = $stop
+          $child = Join-Path $home2 "child.ts"
+          @(
+            'import { existsSync } from "node:fs";'
+            'console.log(" 42%|####      | 420/1000 [00:31<00:47, 9.8it/s]");'
+            'while (!existsSync(process.env.GPULEASE_STOP_FILE!)) await Bun.sleep(500);'
+          ) | Set-Content -Path $child -Encoding ASCII
+
+          $proc = Start-Process -FilePath $exe -ArgumentList @('run','--name','prog','--',$env:BUN_EXE,$child) -PassThru -WindowStyle Hidden
+          $hit = $null
+          try {
+            for ($i = 0; $i -lt 6; $i++) {
+              Start-Sleep -Seconds 2
+              $raw = & $exe ls --json 2>&1 | Out-String
+              if ($LASTEXITCODE -ne 0) { throw "ls --json exited $LASTEXITCODE (progress)" }
+              $state2 = $raw | ConvertFrom-Json
+              $task = $state2.tasks | Where-Object { $_.run.name -eq 'prog' } | Select-Object -First 1
+              if ($task -and $task.progress) { $hit = $task; break }
+            }
+          } finally {
+            New-Item -ItemType File -Force -Path $stop | Out-Null
+            Start-Sleep -Seconds 2
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          }
+
+          if (-not $hit) { throw "no progress was read from the live run" }
+          if ($hit.progress.percent -ne 42) { throw "percent was $($hit.progress.percent), expected 42" }
+          if ($hit.progress.label -ne '420/1000') { throw "label was $($hit.progress.label), expected 420/1000" }
+          if ($hit.progress.eta_sec -ne 47) { throw "eta was $($hit.progress.eta_sec), expected 47" }
+          $text = & $exe ls --no-color 2>&1 | Out-String
+          if ($text -notmatch '42%') { throw "human output does not show 42 percent" }
+          Write-Host "progress: percent 42, label 420/1000, eta 47s, visible in human output"
+
+          Remove-Item Env:GPULEASE_HOME -ErrorAction SilentlyContinue
+          Remove-Item Env:GPULEASE_STOP_FILE -ErrorAction SilentlyContinue
+          $global:LASTEXITCODE = 0
+
       - name: diagnose subprocess layer
         continue-on-error: true
         shell: pwsh

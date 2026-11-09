@@ -3,6 +3,7 @@
 
 import type { PanelState, TaskView } from "./state";
 import { humanDuration } from "./rules";
+import { humanEta } from "./progress";
 import type { Gpu } from "./types";
 
 export const VERDICT_LABEL: Record<string, string> = {
@@ -81,7 +82,19 @@ export function taskLine(task: TaskView, color: boolean): string {
   const quiet = (Date.now() - task.since) / 1000;
   const since = task.verdict === "ok" ? "" : ` · ${humanDuration(quiet)}前`;
   const pid = task.run.root_pid ? ` pid ${task.run.root_pid}` : "";
-  return `${paint(label, verdictColor(task.verdict), color)}  ${task.sentence}${since}${paint(pid, C.dim, color)}`;
+  const progress = progressText(task);
+  return `${paint(label, verdictColor(task.verdict), color)}  ${task.sentence}${since}${progress}${paint(pid, C.dim, color)}`;
+}
+
+/** 进度只报日志里真读到的东西：百分比 + 原始计数 + 剩余时间（有才显示）。 */
+function progressText(task: TaskView): string {
+  const p = task.progress;
+  if (!p) return "";
+  const parts: string[] = [];
+  if (p.percent !== null) parts.push(`${p.percent}%`);
+  parts.push(p.label);
+  if (p.eta_sec !== null) parts.push(`还剩 ${humanEta(p.eta_sec)}`);
+  return ` · ${parts.join(" · ")}`;
 }
 
 export function renderPanel(state: PanelState, opts: RenderOptions): string[] {

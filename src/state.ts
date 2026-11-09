@@ -4,6 +4,7 @@
 import { snapshot } from "./collect/nvidia";
 import { listProcesses, isAlive } from "./collect/winproc";
 import { attribute } from "./attribute";
+import { parseProgress, readTail, type Progress } from "./progress";
 import { judge } from "./rules";
 import { activeRuns, listRuns, openStore } from "./store";
 import type { Gpu, GpuProc, Run, Verdict } from "./types";
@@ -15,6 +16,8 @@ export type TaskView = {
   alive: boolean;
   since: number;
   gpus: number[];
+  /** 从任务自己的日志尾巴里读到的进度；读不到就是 null，不编数字 */
+  progress: Progress | null;
 };
 
 export type PanelState = {
@@ -52,6 +55,7 @@ export async function buildState(opts: { limit?: number; includeEnded?: boolean 
       alive,
       since: assessment.since,
       gpus: [...new Set(gpus)].filter((g): g is number => g !== null),
+      progress: run.ended_at === null && run.log_path ? parseProgress(readTail(run.log_path)) : null,
     };
   });
 
