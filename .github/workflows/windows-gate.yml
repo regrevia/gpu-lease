@@ -167,6 +167,21 @@ jobs:
           $global:LASTEXITCODE = 0
           Write-Host "smoke=ok"
 
+      # 信息性一步：进程层采不到时，把每条子进程路径的耗时/退出码打出来，便于定位。
+      # continue-on-error：诊断信息不该把门禁变红。
+      - name: diagnose subprocess layer
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path dist -Filter *.exe | Select-Object -First 1 -ExpandProperty FullName
+          $out = & $exe doctor --probe --json 2>&1
+          $obj = ($out | Out-String) | ConvertFrom-Json
+          Write-Host "process_layer=$($obj.wmi) detail=$($obj.wmi_detail)"
+          foreach ($r in $obj.probe) {
+            Write-Host ("probe {0}: code={1} timedOut={2} ms={3} bytes={4} err={5}" -f $r.label, $r.code, $r.timedOut, $r.ms, $r.out_bytes, $r.err_head)
+          }
+          $global:LASTEXITCODE = 0
+
       - name: checksum
         if: hashFiles('package.json') != ''
         shell: powershell

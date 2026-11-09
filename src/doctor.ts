@@ -8,6 +8,7 @@ import { snapshot } from "./collect/nvidia";
 import { listProcesses } from "./collect/winproc";
 import { stateDir } from "./paths";
 import type { DoctorReport } from "./types";
+import { probe } from "./collect/probe";
 
 export const VERSION = "0.1.0";
 
@@ -29,7 +30,7 @@ async function eventLogCounts(): Promise<{ tdr_4101: number | null; nvlddmkm: nu
   return { tdr_4101: n(a), nvlddmkm: n(b) };
 }
 
-export async function buildDoctor(): Promise<DoctorReport> {
+export async function buildDoctor(opts: { probe?: boolean } = {}): Promise<DoctorReport> {
   const nv = await snapshot(4000);
   const procLayer = await listProcesses({ refresh: true, timeoutMs: 10000 });
   const event = await eventLogCounts();
@@ -45,7 +46,7 @@ export async function buildDoctor(): Promise<DoctorReport> {
     notes.push(`最近 24 小时有 ${event.tdr_4101} 次驱动超时恢复（TDR 4101）`);
   }
 
-  return {
+  const report: DoctorReport = {
     version: VERSION,
     platform: process.platform,
     arch: process.arch,
@@ -58,6 +59,8 @@ export async function buildDoctor(): Promise<DoctorReport> {
     store_path: join(stateDir(), "gpulease.db"),
     notes,
   };
+  if (opts.probe) report.probe = await probe();
+  return report;
 }
 
 export function renderDoctor(report: DoctorReport): string {
@@ -73,6 +76,14 @@ export function renderDoctor(report: DoctorReport): string {
   lines.push(`进程层：${report.wmi === "ok" ? "可读" : "不可读"}${report.wmi_detail ? `（${report.wmi_detail}）` : ""}`);
   if (report.event_log) {
     lines.push(`驱动事件（24 小时）：超时恢复 ${report.event_log.tdr_4101 ?? "?"} 次 · nvlddmkm ${report.event_log.nvlddmkm ?? "?"} 条`);
+  }
+  if (report.probe?.length) {
+    lines.push("");
+    lines.push("子进程探针：");
+    for (const r of report.probe) {
+      const how = r.timedOut ? `超时 ${r.ms}ms` : `code ${r.code} · ${r.ms}ms · ${r.out_bytes} 字节`;
+      lines.push(`  ${r.label}：${how}${r.err_head ? ` · ${r.err_head}` : ""}`);
+    }
   }
   lines.push(`状态库：${report.store_path}`);
   if (report.notes.length) {

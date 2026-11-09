@@ -56,7 +56,7 @@ async function commandDoctor(argv: string[]): Promise<number> {
     console.log(`诊断包已生成：${path}`);
     return 0;
   }
-  const report = await buildDoctor();
+  const report = await buildDoctor({ probe: argv.includes("--probe") });
   if (argv.includes("--json")) {
     console.log(JSON.stringify(report, null, 2));
     return 0;

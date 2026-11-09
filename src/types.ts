@@ -78,4 +78,5 @@ export type DoctorReport = {
   event_log: { tdr_4101: number | null; nvlddmkm: number | null } | null;
   store_path: string;
   notes: string[];
+  probe?: { label: string; cmd: string; code: number; timedOut: boolean; ms: number; out_bytes: number; err_head: string }[];
 };
