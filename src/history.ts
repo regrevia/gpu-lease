@@ -93,8 +93,8 @@ function pct(n: number | null): string {
 
 export function renderHistory(history: History): string[] {
   const lines: string[] = [];
-  const torque = `最近 ${history.minutes} 分钟`;
-  lines.push(`${torque}（采样 ${history.ticks} 次）`);
+  const windowText = `最近 ${history.minutes} 分钟`;
+  lines.push(`${windowText}（采样 ${history.ticks} 次）`);
   if (!history.samples) {
     lines.push("还没有采样：值班进程（gpulease daemon）每 15 秒记一次，先让它跑一会儿。");
     return lines;
