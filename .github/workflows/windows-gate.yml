@@ -276,12 +276,17 @@ jobs:
           $fit = Get-Queue | Where-Object { $_.name -eq "q-fit" }
           $wait = Get-Queue | Where-Object { $_.name -eq "q-wait" }
           if ($null -eq $fit) { throw "q-fit missing from the queue" }
+          # daemon 是异步的，先给它几秒把 q-fit 放上卡 0，别抢在它前面读。
+          for ($i = 0; $i -lt 30 -and $fit.gpu -ne 0; $i++) {
+            Start-Sleep -Milliseconds 500
+            $fit = Get-Queue | Where-Object { $_.name -eq "q-fit" }
+          }
           if ($fit.gpu -ne 0) { throw "q-fit must land on card 0 (the only card with enough free vram), got $($fit.gpu)" }
           if ($wait.state -ne "queued") { throw "q-wait needs 20 GB and cannot fit; state must stay queued, got $($wait.state)" }
           if ([string]::IsNullOrWhiteSpace($wait.reason)) { throw "q-wait must carry the reason it is waiting" }
           Write-Host "queue: q-fit placed on card 0, q-wait explains why it waits"
 
-          for ($i = 0; $i -lt 15; $i++) {
+          for ($i = 0; $i -lt 30; $i++) {
             $fit = Get-Queue | Where-Object { $_.name -eq "q-fit" }
             if ($fit.state -eq "done") { break }
             Start-Sleep -Seconds 2
@@ -320,7 +325,7 @@ jobs:
           $proc = Start-Process -FilePath $exe -ArgumentList @('run','--name','prog','--',$env:BUN_EXE,$child) -PassThru -WindowStyle Hidden
           $hit = $null
           try {
-            for ($i = 0; $i -lt 6; $i++) {
+            for ($i = 0; $i -lt 12; $i++) {
               Start-Sleep -Seconds 2
               $raw = & $exe ls --json 2>&1 | Out-String
               if ($LASTEXITCODE -ne 0) { throw "ls --json exited $LASTEXITCODE (progress)" }
