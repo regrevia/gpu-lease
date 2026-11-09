@@ -79,7 +79,9 @@ function round1(n: number): number {
  * 不算假预算：把自己每 2 秒一轮的 CPU 占和 RSS 打出来，数字难看就是难看。
  */
 export async function soak(opts: { seconds?: number; intervalMs?: number } = {}): Promise<SoakReport> {
-  const seconds = Math.min(120, Math.max(2, opts.seconds ?? 30));
+  // 上限给到 1 小时：浸泡工作流要跑 30 分钟，之前卡在 120 秒上，
+  // 于是 1800 秒的请求实际只跑了两分钟被断言抓住——上限得先撑得住。
+  const seconds = Math.min(3600, Math.max(2, opts.seconds ?? 30));
   const intervalMs = Math.max(200, opts.intervalMs ?? 2000);
   const cpu0 = process.cpuUsage();
   const t0 = Date.now();
@@ -89,7 +91,7 @@ export async function soak(opts: { seconds?: number; intervalMs?: number } = {})
   let peakRss = process.memoryUsage().rss;
   let startRss: number | null = null;
   // 至少跑两轮：慢机器上一轮采集可能就吃掉整个窗口，只跑一轮的数字什么都说明不了。
-  while (Date.now() - t0 < seconds * 1000 || ticks < 2) {
+  for (;;) {
     const tickStart = Date.now();
     await buildState({ includeEnded: false });
     const dt = Date.now() - tickStart;
@@ -99,7 +101,10 @@ export async function soak(opts: { seconds?: number; intervalMs?: number } = {})
     const rssNow = process.memoryUsage().rss;
     peakRss = Math.max(peakRss, rssNow);
     if (startRss === null) startRss = rssNow;
-    const rest = intervalMs - (Date.now() - tickStart);
+    // 到了窗口末尾再检查轮数：够两轮就停，不够就补一轮，不额外多睡一个间隔。
+    const elapsed = Date.now() - t0;
+    if (elapsed >= seconds * 1000 && ticks >= 2) break;
+    const rest = Math.min(intervalMs - (Date.now() - tickStart), Math.max(0, seconds * 1000 - elapsed));
     if (rest > 0) await Bun.sleep(rest);
   }
   const wall = Date.now() - t0;
