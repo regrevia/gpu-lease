@@ -40,18 +40,55 @@ jobs:
             Write-Host "nvidia_smi=absent (this node verifies packaging and process layer, not GPU telemetry)"
           }
 
-      - name: setup bun
+      # 不能用 oven-sh/setup-bun：它以 NetworkService 身份运行时会做 symlink，
+      # 而这台机器没开开发者模式 -> EPERM。改成自己解析 bun.exe，不依赖符号链接。
+      - name: resolve bun
         if: hashFiles('package.json') != ''
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Continue"
+          $bun = $null
+
+          $onPath = Get-Command bun.exe -ErrorAction SilentlyContinue
+          if ($onPath) { $bun = $onPath.Source; Write-Host "bun: already on PATH" }
+
+          if (-not $bun) {
+            Write-Host "bun: installing from the npm registry"
+            New-Item -ItemType Directory -Path .bun-tool -Force | Out-Null
+            npm install --prefix .bun-tool bun@latest --no-audit --no-fund 2>&1 | Write-Host
+            $bun = (Get-ChildItem -Path .bun-tool -Recurse -Filter bun.exe -File -ErrorAction SilentlyContinue |
+                    Select-Object -First 1).FullName
+          }
+
+          if (-not $bun) {
+            Write-Host "bun: registry route failed, trying the release CDN"
+            New-Item -ItemType Directory -Path .bun-tool -Force | Out-Null
+            $zip = Join-Path $env:TEMP "bun-windows-x64.zip"
+            $url = "https://github.com/oven-sh/bun/releases/latest/download/bun-windows-x64.zip"
+            for ($i = 1; $i -le 4 -and -not $bun; $i++) {
+              & curl.exe -fsSL --retry 3 --retry-all-errors --connect-timeout 30 -o $zip $url
+              if ($LASTEXITCODE -eq 0) {
+                Expand-Archive -LiteralPath $zip -DestinationPath .bun-tool -Force
+                $bun = (Get-ChildItem -Path .bun-tool -Recurse -Filter bun.exe -File |
+                        Select-Object -First 1).FullName
+              } else {
+                Write-Host ("download attempt {0} failed" -f $i)
+                Start-Sleep -Seconds (5 * $i)
+              }
+            }
+          }
+
+          if (-not $bun) { throw "could not obtain bun.exe" }
+          Write-Host "bun=$bun"
+          Write-Host ("bun_version={0}" -f (& $bun --version))
+          "BUN_EXE=$bun" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: install
         if: hashFiles('package.json') != ''
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          if (Test-Path bun.lock) { bun install --frozen-lockfile } else { bun install }
+          if (Test-Path bun.lock) { & $env:BUN_EXE install --frozen-lockfile } else { & $env:BUN_EXE install }
           if ($LASTEXITCODE -ne 0) { throw "bun install failed" }
 
       - name: test
@@ -59,9 +96,10 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          $tests = Get-ChildItem -Recurse -File -Include *.test.ts,*.spec.ts -ErrorAction SilentlyContinue
+          $tests = Get-ChildItem -Recurse -File -Include *.test.ts,*.spec.ts -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch '\\node_modules\\' }
           if (-not $tests) { Write-Host "::notice::no test files yet"; exit 0 }
-          bun test
+          & $env:BUN_EXE test
           if ($LASTEXITCODE -ne 0) { throw "tests failed" }
 
       - name: compile single exe
@@ -70,7 +108,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Path dist -Force | Out-Null
-          bun build --compile --target=bun-windows-x64 --outfile dist/gpulease.exe src/main.ts
+          & $env:BUN_EXE build --compile --target=bun-windows-x64 --outfile dist/gpulease.exe src/main.ts
           if ($LASTEXITCODE -ne 0) { throw "bun build failed" }
           $f = Get-Item dist/gpulease.exe
           Write-Host ("exe_bytes={0} size_mb={1}" -f $f.Length, [math]::Round($f.Length/1MB,1))
@@ -81,7 +119,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           # A single-file exe must not need node on PATH.
-          $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -notmatch 'nodejs|nvm' }) -join ';'
+          $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -notmatch 'nodejs|nvm|npm' }) -join ';'
           $exe = (Resolve-Path dist/gpulease.exe).Path
 
           $v = & $exe --version 2>&1 | Out-String
@@ -127,7 +165,9 @@ jobs:
       - name: scaffold only
         if: hashFiles('package.json') == ''
         shell: powershell
-        run: Write-Host "::notice::no package.json yet — the gate has nothing to build"
+        env:
+          PYTHONIOENCODING: utf-8
+        run: Write-Host "no package.json yet - the gate has nothing to build"
 
   release:
     needs: build-and-verify
@@ -148,5 +188,5 @@ jobs:
           $ErrorActionPreference = "Stop"
           $tag = $env:GITHUB_REF -replace '^refs/tags/', ''
           Get-Content dist/SHA256SUMS.txt | Write-Host
-          gh release create $tag dist/gpulease.exe dist/SHA256SUMS.txt --title $tag --notes "见 docs/；未签名，首次运行 Windows 会提示，校验 SHA256 后放行。" --verify-tag
+          gh release create $tag dist/gpulease.exe dist/SHA256SUMS.txt --title $tag --notes "unsigned; verify SHA256 before running" --verify-tag
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
