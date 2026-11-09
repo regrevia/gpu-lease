@@ -16,7 +16,10 @@ permissions:
   contents: write
 
 concurrency:
-  group: windows-gate
+  # 一个仓库一条队列，但按 ref 分开：tag 的发布作业不能被随后的 main push 顶掉
+  # （实测：共用组时，排在后面的 tag 运行会在没有作业的情况下被取消）。
+  # 机器上只有一个 runner，真正的串行由 runner 自己保证。
+  group: windows-gate-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
