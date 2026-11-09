@@ -14,6 +14,17 @@ $ gpulease ls
 
 （这是 v0.1 的真实输出形状：没有百分比，因为进度适配器还没做；宁可不给数字，不给假数字。）
 
+## 下载（Windows）
+
+**[gpulease 0.1.0](https://github.com/regrevia/gpu-lease/releases/tag/v0.1.0)** → `gpulease-windows-x64.zip`（52.2 MB），解压得到 `gpulease.exe`（110 MB）。
+旁边 `SHA256SUMS.txt` 里有 exe 与 zip 两行，先核对再运行：
+
+```powershell
+Get-FileHash .\gpulease-windows-x64.zip -Algorithm SHA256   # 和 SHA256SUMS.txt 里 zip 那行比
+```
+
+未签名，首次运行会被 SmartScreen 拦一次（更多信息 → 仍要运行）。没有显卡的机器也能跑，`doctor` 会直说没有 NVIDIA 卡。
+
 ## 为什么做这个
 
 - GitHub 上 `gpu monitor` 有 4770 个仓库、`gpu dashboard` 1528 个 —— **数字层已经过剩**。
