@@ -20,7 +20,7 @@ v0.3 加了排队：`gpulease submit --name "训练 SDXL LoRA" --need-vram 12 --
 
 ## 下载（Windows）
 
-**[gpulease 0.7.0](https://github.com/regrevia/gpu-lease/releases/tag/v0.7.0)** → `gpulease-windows-x64.zip`（54,747,790 字节 / 52.2 MB，SHA256 `27297520…31be16`），解压得到 `gpulease.exe`（115,340,288 字节 / 110 MB，SHA256 `c970977c…2a44c3`）。
+**[gpulease 1.0.0](https://github.com/regrevia/gpu-lease/releases/tag/v1.0.0)** → `gpulease-windows-x64.zip`，解压得到 `gpulease.exe`。逐字节体积与 SHA256 在 release 页和 `SHA256SUMS.txt` 里（zip 每次打包不保证字节可复现，exe 可复现）。
 旁边 `SHA256SUMS.txt` 里有 exe 与 zip 两行，先核对再运行：
 
 ```powershell
@@ -110,12 +110,14 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 ## 目前范围
 
 已做（v0.7）：采集 + 托管启动 + 归属 + 判定 + 进度 + `ls` / `watch` / `serve` 三个入口 + `doctor` 自检 + 诊断包 + 排队与常驻值班选卡 + 告警（冷却、`recovered` 照发）+ 占用率历史（`history`）+ 值班崩溃现场 + 开销自测（`doctor --soak`）+ `install` / `uninstall` + 任务认会话（`--session` / `DSH_SESSION_ID`）+ `sessions` 按会话汇总。
-在做（1.0）：按 [验收矩阵](docs/09-acceptance.md) 补齐真机八项（显卡读数、WDDM 显存、真负载判定、eGPU 热拔、TDR、真训练进度、真多任务调度、TUI），再复核一次契约冻结。
+1.0 已发，但矩阵里还有八条「待真机」：显卡读数、WDDM 显存、真负载判定、eGPU 热拔、TDR、真训练进度、真多任务调度、TUI。拿到有卡的机器后跑 [矩阵第 9 节](docs/09-acceptance.md) 那十分钟清单，`gpulease doctor --acceptance` 会先自动判掉能判的，剩下的按清单动手。
 没做：托盘气泡、自动杀、多机、Linux / macOS 的生产支持。这些按 [路线](ROADMAP.md) 排。
 
 **验收标准：第一眼能看出"原来这是我的训练在跑，跑到哪了"。**
 
 ## 状态
+
+v1.0.0 可下载（[release](https://github.com/regrevia/gpu-lease/releases/tag/v1.0.0)）：把「支持」变成一张可核对的表——[验收矩阵](docs/09-acceptance.md) 逐条写明证据是门禁节点、可重放夹具，还是只能在有卡机器上验的「待真机」（限定四类、最多 8 条，门禁 `acceptance matrix guard` 机械卡着）；`gpulease doctor --acceptance` 一条命令当场自检，写出 `acceptance.json` / `acceptance.md`；`history --gpu/--minutes` 写错不再悄悄看全部卡，按参数错误以 2 退出。契约在 1.0 冻结，这一版只新增、没删改。`bun test` 137 条 / 381 断言，Windows 门禁 24 步除发布步骤外全绿。节点上没有 NVIDIA 卡，显存读数与真负载判定仍是「待真机」。
 
 v0.4.0 已发布（[release](https://github.com/regrevia/gpu-lease/releases/tag/v0.4.0)，tag run `42713747045`）：`run` / `ls` / `watch` / `serve` / `submit` / `queue` / `cancel` / `daemon` / `alerts` / `history` / `doctor` 在本机 macOS 与 Windows 自托管节点上都跑过，`bun test` 92 条绿 / 242 断言，Windows 门禁（run `42696447220`）17 步全过，真机验到"历史跨值班进程重启累积""稀疏曲线留白不画成 0""浸泡量出监控自己的 CPU 与内存"。显卡数字（多卡、eGPU 断联、真机刷新间隔）还需要有卡的机器验。MIT。
 

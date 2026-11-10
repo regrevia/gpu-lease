@@ -14,7 +14,7 @@ import { probe } from "./collect/probe";
 import { openStore, listSamples } from "./store";
 import { buildAcceptance, type AcceptanceReport } from "./acceptance";
 
-export const VERSION = "0.7.0";
+export const VERSION = "1.0.0";
 
 async function eventLogCounts(): Promise<{ tdr_4101: number | null; nvlddmkm: number | null } | null> {
   if (!IS_WIN) return null;

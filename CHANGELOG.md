@@ -1,6 +1,9 @@
 # 变更记录
 
-## 未发布（1.0 路上）
+## 1.0.0
+
+契约在 1.0 冻结：只新增 `doctor --acceptance` 参数与 `AcceptanceReport` 字段，没有删改已发布字段或 `verdict` / `kind` / `state` 的取值集合。`bun test` 137 条 / 381 断言；Windows 门禁 24 步，除 push 时跳过的发布步骤外全绿。
+
 
 - **修**：`history --gpu abc` / `history --gpu`（缺值）/ `history --minutes 0` 以前被悄悄当成"看全部卡 / 默认 30 分钟"，现在按参数错误打到 stderr 并以 2 退出（`--gpu 要一个显卡序号（0、1…）`）。原因是人以为在看某一张卡，实际看到的是全部。
 - **新**：`gpulease doctor --acceptance [--out DIR]`：按验收矩阵当场自检，能机器判的条目直接判（卡型号与显存、WDDM 按进程显存、TDR 事件查询、历史采样、进程层、单文件 exe），判不了的列成「待真机」并给一条验法；同时写出 `acceptance.json` / `acceptance.md`，贴回来就能核。门禁加 `acceptance self-check` 步骤，在 Windows 节点上验这份输出是合法 JSON 且状态齐全。

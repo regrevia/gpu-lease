@@ -48,7 +48,7 @@ bun src/main.ts <子命令> --json
 | `doctor` | `--json`、`--bundle`、`--soak`、`--seconds`（默认 30）、`--probe`、`--acceptance`、`--out` DIR | 自检；`--bundle` 生成诊断包，`--soak` 量值班开销，`--acceptance` 按验收矩阵当场判能判的条目并写出 `acceptance.json` / `acceptance.md` | 0 |
 | `install` | `--autostart`、`--no-start-menu`、`--dir` DIR、`--json` | 装进 Windows 用户目录 | 0；非 Windows 1 |
 | `uninstall` | `--purge`、`--dir` DIR、`--json` | 卸载 | 0；有删不掉的 1；非 Windows 1 |
-| `--version` / `-v` / `version` | — | 打印版本号（当前 `0.7.0`） | 0 |
+| `--version` / `-v` / `version` | — | 打印版本号（当前 `1.0.0`） | 0 |
 | 不带参数 / `--help` / `-h` / `help` | — | 打印用法 | 0 |
 
 退出码只有三个数：
