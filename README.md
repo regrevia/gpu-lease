@@ -20,7 +20,7 @@ v0.3 加了排队：`gpulease submit --name "训练 SDXL LoRA" --need-vram 12 --
 
 ## 下载（Windows）
 
-**[gpulease 0.4.0](https://github.com/regrevia/gpu-lease/releases/tag/v0.4.0)** → `gpulease-windows-x64.zip`（54,743,587 字节 / 52.2 MB），解压得到 `gpulease.exe`（115,328,000 字节 / 110 MB）。
+**[gpulease 0.5.0](https://github.com/regrevia/gpu-lease/releases/tag/v0.5.0)** → `gpulease-windows-x64.zip`（54,746,475 字节 / 52.2 MB，SHA256 `9a762dc6…dde9bde`），解压得到 `gpulease.exe`（115,336,192 字节 / 110 MB，SHA256 `3399a6cd…0fc7b49d`）。
 旁边 `SHA256SUMS.txt` 里有 exe 与 zip 两行，先核对再运行：
 
 ```powershell
@@ -116,6 +116,8 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 ## 状态
 
 v0.4.0 已发布（[release](https://github.com/regrevia/gpu-lease/releases/tag/v0.4.0)，tag run `42713747045`）：`run` / `ls` / `watch` / `serve` / `submit` / `queue` / `cancel` / `daemon` / `alerts` / `history` / `doctor` 在本机 macOS 与 Windows 自托管节点上都跑过，`bun test` 92 条绿 / 242 断言，Windows 门禁（run `42696447220`）17 步全过，真机验到"历史跨值班进程重启累积""稀疏曲线留白不画成 0""浸泡量出监控自己的 CPU 与内存"。显卡数字（多卡、eGPU 断联、真机刷新间隔）还需要有卡的机器验。MIT。
+
+v0.5.0 可下载（[release](https://github.com/regrevia/gpu-lease/releases/tag/v0.5.0)，tag run `42763081158`）：`install` / `uninstall` 在自托管 Windows 节点的真注册表、真用户 PATH 上装过、敲过、卸过（门禁 `42762620953` 20 步全绿）；这一步先抓出「卸完用户 PATH 还原不了」，修掉之后才打的 tag。`bun test` 112 条绿 / 282 断言。节点上没有 NVIDIA 卡，显存读数、按进程显存、eGPU 断联仍然只有假 SMI 覆盖的逻辑路径，没在真卡上验过。
 
 ## 没有 NVIDIA 卡也能验
 
