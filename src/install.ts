@@ -52,26 +52,35 @@ export function installRoots(
   };
 }
 
-/** 往 PATH 里加一段：已经有了就不重复加，也不改大小写。Windows 上分号分隔、不区分大小写。 */
+/** 往 PATH 里加一段：已经有了就不重复加，也不改大小写。Windows 上分号分隔、不区分大小写。
+ *  已有的段落原样保留——安装不该顺手把别人的 PATH 重排、去空格、改大小写，
+ *  否则卸载后没法还原成装之前那一串。 */
 export function mergePath(existing: string, addition: string, win = IS_WIN): string {
   const sep = win ? ";" : ":";
   const norm = (s: string): string => (win ? s.trim().toLowerCase() : s.trim());
   const want = norm(addition);
-  const parts = existing.split(sep).map((p) => p.trim()).filter(Boolean);
-  if (parts.some((p) => norm(p) === want)) return parts.join(sep);
-  return [...parts, addition].join(sep);
+  const parts = existing.split(sep);
+  if (parts.some((p) => p.trim() !== "" && norm(p) === want)) return existing;
+  const base = existing.replace(trailingSeps(sep), "");
+  return base ? `${base}${sep}${addition}` : addition;
 }
 
-/** PATH 里去掉一段（卸载用）；找不到就原样返回。 */
+/** PATH 里去掉一段（卸载用）；只摘掉这一段，其余段落（含原来的空段、空格、大小写）原样保留。
+ *  找不到就原样返回；摘掉后如果什么都不剩，返回空串，调用方负责把变量删掉而不是写成 ""。 */
 export function dropPath(existing: string, target: string, win = IS_WIN): string {
   const sep = win ? ";" : ":";
   const norm = (s: string): string => (win ? s.trim().toLowerCase() : s.trim());
   const want = norm(target);
-  return existing
-    .split(sep)
-    .map((p) => p.trim())
-    .filter((p) => p && norm(p) !== want)
-    .join(sep);
+  const kept = existing.split(sep).filter((p) => !(p.trim() !== "" && norm(p) === want));
+  return kept.join(sep).replace(edgeSeps(sep), "");
+}
+
+function trailingSeps(sep: string): RegExp {
+  return new RegExp(`[${sep}]+$`);
+}
+
+function edgeSeps(sep: string): RegExp {
+  return new RegExp(`^[${sep}]+|[${sep}]+$`, "g");
 }
 
 /** 开机自启命令行：路径带空格时必须加引号，否则注册表原话会被劈开。 */
@@ -97,6 +106,10 @@ async function currentUserPath(): Promise<string> {
 
 async function setUserPath(value: string): Promise<void> {
   await powershell(`[Environment]::SetEnvironmentVariable('PATH',${psQuote(value)},'User')`);
+}
+
+async function clearUserPath(): Promise<void> {
+  await powershell(`[Environment]::SetEnvironmentVariable('PATH',$null,'User')`);
 }
 
 async function makeShortcut(shortcut: string, exe: string, args: string): Promise<void> {
@@ -252,8 +265,10 @@ export async function commandUninstall(argv: string[]): Promise<number> {
 
     const path = await currentUserPath();
     const next = dropPath(path, roots.binDir);
-    if (next !== mergePath(path, roots.binDir) && next !== path) {
-      await setUserPath(next);
+    if (next !== path) {
+      // 摘完什么都不剩就把变量删掉；写成空串等于留了个 ""，装之前没有 PATH 的机器还原不回去。
+      if (next) await setUserPath(next);
+      else await clearUserPath();
       done.push(`PATH 里去掉 ${roots.binDir}`);
     }
 

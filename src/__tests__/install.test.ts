@@ -39,8 +39,30 @@ describe("PATH 合并", () => {
     expect(mergePath(p, "C:\\tools", true)).toBe(p);
   });
 
-  test("不区分大小写、忽略尾部分号", () => {
-    expect(mergePath("C:\\Tools;", "c:\\tools", true)).toBe("C:\\Tools");
+  test("不区分大小写；已经有了就原样返回，不去尾部分号、不重排", () => {
+    expect(mergePath("C:\\Tools;", "c:\\tools", true)).toBe("C:\\Tools;");
+    expect(mergePath("C:\\a ; C:\\Tools", "c:\\tools", true)).toBe("C:\\a ; C:\\Tools");
+  });
+
+  test("加进去时已有的段落一个字节都不动", () => {
+    expect(mergePath("C:\\a ; C:\\b;", "C:\\x", true)).toBe("C:\\a ; C:\\b;C:\\x");
+  });
+
+  test("装完再卸，PATH 回到装之前那一串（段落顺序、空格、空段都不动）", () => {
+    const bin = "C:\\Users\\me\\AppData\\Local\\gpulease\\bin";
+    for (const before of ["C:\\a;C:\\b", "C:\\a ;C:\\b", "C:\\a;;C:\\b", ""]) {
+      expect(dropPath(mergePath(before, bin, true), bin, true)).toBe(before);
+    }
+  });
+
+  test("原来以分号结尾的，装的时候会去掉那个尾分号（PATH 里不留空段），卸完是去掉尾分号的那一串", () => {
+    const bin = "C:\\Users\\me\\AppData\\Local\\gpulease\\bin";
+    expect(dropPath(mergePath("C:\\a;", bin, true), bin, true)).toBe("C:\\a");
+  });
+
+  test("只装了我们的 PATH，卸完是空串（调用方把变量删掉，不写空串）", () => {
+    const bin = "C:\\Users\\me\\AppData\\Local\\gpulease\\bin";
+    expect(dropPath(mergePath("", bin, true), bin, true)).toBe("");
   });
 
   test("空的 PATH 直接放进去", () => {

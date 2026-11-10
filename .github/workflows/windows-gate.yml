@@ -219,7 +219,10 @@ jobs:
             if ($runAfter) { throw "卸完自启项还在：$runAfter" }
             $pathAfter = [Environment]::GetEnvironmentVariable('PATH','User')
             if ($pathAfter -split ';' | Where-Object { $_.Trim().ToLower() -eq $bin.ToLower() }) { throw "卸完 PATH 里还有 $bin" }
-            if ($pathAfter -ne $before) { throw "卸完用户 PATH 没回到原样" }
+            # 装的时候会顺手去掉尾分号（PATH 里不留空段），所以只把尾巴上的分号抹平再比，其余要一模一样。
+            $beforeStr = ([string]$before).Trim().TrimEnd(';')
+            $afterStr = ([string]$pathAfter).Trim().TrimEnd(';')
+            if ($afterStr -ne $beforeStr) { throw "卸完用户 PATH 没回到原样：装之前是「$beforeStr」，卸完是「$afterStr」" }
             Write-Host "install/uninstall: 装 → 重装不重复 → 跑 → 卸干净，全过"
           } finally {
             # 失败也别把注册表和 PATH 留脏
