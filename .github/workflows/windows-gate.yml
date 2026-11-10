@@ -521,6 +521,30 @@ jobs:
           }
           $global:LASTEXITCODE = 0
 
+      # 验收自检：真机上一条命令就产出 acceptance.json / acceptance.md。
+      # 这里只证明"能跑、输出是合法契约"，不假装没有卡的节点满足了待真机项。
+      - name: acceptance self-check
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path dist -Filter gpulease.exe | Select-Object -First 1
+          if (-not $exe) { throw "no dist/gpulease.exe to check" }
+          $out = Join-Path $env:RUNNER_TEMP "acceptance-check"
+          $raw = & $exe.FullName doctor --acceptance --json --out $out 2>$null
+          if ($LASTEXITCODE -ne 0) { throw "doctor --acceptance exited $LASTEXITCODE" }
+          $report = ($raw -join "`n") | ConvertFrom-Json
+          if ($report.items.Count -lt 12) { throw "acceptance report has only $($report.items.Count) items" }
+          $sum = [int]$report.counts.proven + [int]$report.counts.pending + [int]$report.counts.failed
+          if ($sum -ne $report.items.Count) { throw "acceptance counts sum to $sum but there are $($report.items.Count) items" }
+          foreach ($item in $report.items) {
+            if (@("proven", "pending", "failed") -notcontains $item.status) { throw "item $($item.id) has bad status $($item.status)" }
+            if ($item.status -eq "pending" -and -not $item.how) { throw "pending item $($item.id) has no how-to" }
+          }
+          foreach ($name in @("acceptance.json", "acceptance.md")) {
+            if (-not (Test-Path (Join-Path $out $name))) { throw "missing $name in $out" }
+          }
+          Write-Host "acceptance=ok items=$($report.items.Count) proven=$($report.counts.proven) pending=$($report.counts.pending) failed=$($report.counts.failed)"
+          $global:LASTEXITCODE = 0
+
       # 验收矩阵不能悄悄变胖：新增一条只能在真机验的结论就算没证据，超过 8 条直接红。
       - name: acceptance matrix guard
         shell: pwsh

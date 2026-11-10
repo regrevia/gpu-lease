@@ -3,6 +3,7 @@
 ## 未发布（1.0 路上）
 
 - **修**：`history --gpu abc` / `history --gpu`（缺值）/ `history --minutes 0` 以前被悄悄当成"看全部卡 / 默认 30 分钟"，现在按参数错误打到 stderr 并以 2 退出（`--gpu 要一个显卡序号（0、1…）`）。原因是人以为在看某一张卡，实际看到的是全部。
+- **新**：`gpulease doctor --acceptance [--out DIR]`：按验收矩阵当场自检，能机器判的条目直接判（卡型号与显存、WDDM 按进程显存、TDR 事件查询、历史采样、进程层、单文件 exe），判不了的列成「待真机」并给一条验法；同时写出 `acceptance.json` / `acceptance.md`，贴回来就能核。门禁加 `acceptance self-check` 步骤，在 Windows 节点上验这份输出是合法 JSON 且状态齐全。
 - **文档**：新增 [v1.0 验收矩阵](docs/09-acceptance.md)：38 条结论逐条标「节点 / 夹具 / 待真机」，「待真机」只允许出现在显卡读数、eGPU 热拔、TDR、交互式 TUI 四类；第 9 节是有卡机器上十分钟跑完的清单。
 - **门禁**：加 `acceptance matrix guard`——矩阵必须在、待真机行不超过 8 条，多一条没证据的结论就红。
 

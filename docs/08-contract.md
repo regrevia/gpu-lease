@@ -45,7 +45,7 @@ bun src/main.ts <子命令> --json
 | `cancel` | `<队列号>` | 取消一个还在排队的任务 | 0；没有这个号 1；已经不在排队 1；不给号 2 |
 | `alerts` | `--json`、`--limit`（默认 30） | 最近的告警事件 | 0 |
 | `history` | `--minutes`（默认 30，最小 1）、`--gpu` N、`--json` | 每张卡最近一段时间的采样曲线 | 0；`--minutes` / `--gpu` 写错 2 |
-| `doctor` | `--json`、`--bundle`、`--soak`、`--seconds`（默认 30）、`--probe` | 自检；`--bundle` 生成诊断包，`--soak` 量值班开销 | 0 |
+| `doctor` | `--json`、`--bundle`、`--soak`、`--seconds`（默认 30）、`--probe`、`--acceptance`、`--out` DIR | 自检；`--bundle` 生成诊断包，`--soak` 量值班开销，`--acceptance` 按验收矩阵当场判能判的条目并写出 `acceptance.json` / `acceptance.md` | 0 |
 | `install` | `--autostart`、`--no-start-menu`、`--dir` DIR、`--json` | 装进 Windows 用户目录 | 0；非 Windows 1 |
 | `uninstall` | `--purge`、`--dir` DIR、`--json` | 卸载 | 0；有删不掉的 1；非 Windows 1 |
 | `--version` / `-v` / `version` | — | 打印版本号（当前 `0.7.0`） | 0 |

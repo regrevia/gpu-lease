@@ -91,9 +91,10 @@
 
 ## 9. 发布前最后一次真机验收（用户机器，约 10 分钟）
 
-拿到有卡的机器后，按顺序跑，把输出贴回来即可（不需要给它开 runner）：
+拿到有卡的机器后，按顺序跑，把输出贴回来即可（不需要给它开 runner）。第一条命令会自动判掉能机器判的条目，剩下的只有要动手的那几条：
 
 ```powershell
+gpulease doctor --acceptance        # 按本表当场自检，写出 acceptance.json / acceptance.md
 gpulease doctor --bundle            # 存下 diagnostic 包，含显卡与进程层实况
 gpulease ls                         # 面板：卡、占用、任务归属
 gpulease run --name 训练 -- python train.py

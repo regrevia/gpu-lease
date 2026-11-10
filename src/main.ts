@@ -1,11 +1,14 @@
 // CLI 入口：一个二进制，六条命令。
 // hier：run（起任务并记归属）、ls、watch、serve、doctor、version。
 
+import { join } from "node:path";
 import { buildState } from "./state";
+import { stateDir } from "./paths";
 import { renderList, renderSessions } from "./render";
 import { commandWatch } from "./tui";
 import { commandRun } from "./run";
-import { buildDoctor, renderDoctor, renderSoak, soak, writeBundle, VERSION } from "./doctor";
+import { acceptanceReport, buildDoctor, renderDoctor, renderSoak, soak, writeBundle, VERSION } from "./doctor";
+import { renderAcceptance, writeAcceptance } from "./acceptance";
 import { startServer } from "./server";
 import { runDaemon, readDaemonStatus, daemonAlive } from "./daemon";
 import {
@@ -38,7 +41,7 @@ const HELP = `gpulease ${VERSION} — 显卡值班员
   gpulease cancel <队列号>
   gpulease alerts [--json] [--limit 30]
   gpulease history [--minutes 30] [--gpu N] [--json]
-  gpulease doctor [--json] [--bundle] [--soak [--seconds 30]]
+  gpulease doctor [--json] [--bundle] [--soak [--seconds 30]] [--acceptance [--out DIR]]
   gpulease install [--autostart] [--no-start-menu] [--dir DIR] [--json]
   gpulease uninstall [--purge] [--dir DIR] [--json]
   gpulease --version
@@ -301,6 +304,20 @@ async function commandDoctor(argv: string[]): Promise<number> {
       return 0;
     }
     console.log(renderSoak(report));
+    return 0;
+  }
+  if (argv.includes("--acceptance")) {
+    const report = await acceptanceReport();
+    const outArg = argv[argv.indexOf("--out") + 1];
+    const outDir = argv.includes("--out") && outArg ? outArg : join(stateDir(), "acceptance");
+    const files = writeAcceptance(report, outDir);
+    if (argv.includes("--json")) {
+      console.log(JSON.stringify(report, null, 2));
+      process.stderr.write(`报告已写入：${files.json} 和 ${files.md}\n`);
+      return 0;
+    }
+    for (const line of renderAcceptance(report)) console.log(line);
+    console.log(`报告已写入：${files.md}`);
     return 0;
   }
   if (argv.includes("--bundle")) {

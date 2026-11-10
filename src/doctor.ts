@@ -2,7 +2,7 @@
 // 输出必须能直接贴给我看，所以 --json 是主接口，人读版本只是它的排版。
 
 import { readdirSync, readFileSync, statSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { exec, IS_WIN } from "./collect/exec";
 import { snapshot } from "./collect/nvidia";
 import { smiCommand } from "./collect/smi";
@@ -11,6 +11,8 @@ import { stateDir } from "./paths";
 import { buildState } from "./state";
 import type { DoctorReport, SoakReport } from "./types";
 import { probe } from "./collect/probe";
+import { openStore, listSamples } from "./store";
+import { buildAcceptance, type AcceptanceReport } from "./acceptance";
 
 export const VERSION = "0.7.0";
 
@@ -233,4 +235,50 @@ function mtime(path: string): number {
   } catch {
     return 0;
   }
+}
+
+/**
+ * doctor --acceptance：把验收矩阵里能自动判的条目当场判掉。
+ * 只读采样结果，不跑任务、不改配置；判不了的一律 pending 并给出真机验法。
+ */
+export async function acceptanceReport(): Promise<AcceptanceReport> {
+  const nv = await snapshot(4000);
+  const procLayer = await listProcesses({ refresh: true, timeoutMs: 10000 });
+  const event = await eventLogCounts();
+
+  let historySamples = 0;
+  try {
+    const db = openStore();
+    historySamples = listSamples(db, Date.now() - 24 * 3600_000, null).length;
+    db.close();
+  } catch {
+    // 库还没建起来时按 0 计：这是"没跑过值班"，不是失败。
+  }
+
+  const perProcess = nv.gpus.some((g) => g.per_process_vram_available);
+  const used: "numbers" | "na" | "unknown" =
+    nv.gpus.length === 0 ? "unknown" : perProcess ? "numbers" : "na";
+
+  const exe = process.execPath;
+  const single = /\.exe$/i.test(exe) && !/^bun(x)?\.exe$/i.test(basename(exe));
+
+  return buildAcceptance({
+    version: VERSION,
+    platform: process.platform,
+    nvidia_smi: nv.status,
+    gpus: nv.gpus.map((g) => ({
+      index: g.index,
+      name: g.name,
+      memory_total_mb: g.vram_total_mb ?? 0,
+      utilization: g.util,
+      temperature: g.temp_c,
+    })),
+    process_layer: procLayer.procs.length === 0 ? "unavailable" : procLayer.degraded ? "partial" : "ok",
+    used_memory: used,
+    tdr_4101: event?.tdr_4101 ?? null,
+    nvlddmkm: event?.nvlddmkm ?? null,
+    history_samples: historySamples,
+    has_tty: Boolean(process.stdout.isTTY),
+    single_file_exe: single,
+  });
 }

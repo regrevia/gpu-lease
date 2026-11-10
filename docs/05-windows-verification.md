@@ -13,8 +13,9 @@
 | 没有 GPU 时不崩 | 这台节点**没有 NVIDIA 驱动**，正好验"诚实地降级"：`doctor` 输出 `nvidia_smi: "absent"` 与 `notes`，不是异常栈 |
 | 包装器语义对 | `run --name smoke -- powershell -Command "Write-Output hello-from-child"` 退出 0 且日志落盘；`run -- powershell -Command "exit 7"` 必须把 7 透传给调用方 |
 | JSON 契约稳定 | `doctor --json` / `ls --json` 逐条 `ConvertFrom-Json`；空库的 `tasks` 是 `[]`，不是 `null` |
-| 解析器与规则可测 | `bun test` 24 例：nvidia-smi CSV、CIM/tasklist、归因、7 种结论、参数解析——全部是喂字符串给纯函数，不需要显卡 |
+| 解析器与规则可测 | `bun test` 131 例 / 16 个文件 / 352 条断言：nvidia-smi CSV、CIM/tasklist、归因、7 种结论、参数解析、调度与排队、进度适配、告警冷却——大部分是喂字符串给纯函数，不需要显卡 |
 | 子进程路径可用 | `doctor --probe` 逐条量 `cmd` / `tasklist`（PATH 与绝对路径）/ `WindowsPowerShell` / `wmic` 的退出码与耗时 |
+| 验收自检能跑 | `gpulease doctor --acceptance --json --out <dir>` 在节点上退 0，`acceptance.json` 里 12 条状态合法、每条「待真机」都带验法 |
 | 发布可复现 | 同一 job 里算 SHA256 写 `SHA256SUMS.txt`，tag 触发 `gh release create` |
 | 服务账号下的可写性 | 状态库落在 `C:\Windows\ServiceProfiles\NetworkService\AppData\Local\gpulease\gpulease.db`，日志同目录 `logs\`——已实测可写 |
 
@@ -37,7 +38,7 @@
 
 触发：`workflow_dispatch`、`push` 到 `main`、`v*` tag。**绝不接 `pull_request`**——公开仓库的自托管 runner 会让 fork 代码直接在那台机器上执行。
 
-步骤：`node facts`（OS / 内存 / 有无 NVIDIA）→ 解析 bun（不依赖 `setup-bun`，服务账号没有建符号链接的权限）→ `install` → `test` → `compile`（打印 `exe_bytes`）→ `smoke test the exe`（摘 PATH + 四条断言）→ `gpu scenarios`（假 provider 喂双卡 / 单卡 / 断联 / 无卡）→ `queue dispatch`（提交→自己上卡→跑完回写 `run_id`）→ `progress from a live run`（真子进程打 tqdm 行）→ `history across daemon restarts`（两次 `daemon --once` 跨过 15 秒采样下限）→ `perf budget`（`doctor --soak` 跑 20 秒报 CPU / RSS）→ `diagnose subprocess layer`（`doctor --probe`，信息性）→ `pack zip`（量 exe/zip 体积）→ `checksum`（exe 与 zip 各一行 SHA256）→ `publish release`（仅 tag）→ `artifact`（仅供人查，失败不弄红）→ 分支结束。任一硬步骤失败即不发布。
+步骤：`node facts`（OS / 内存 / 有无 NVIDIA）→ 解析 bun（不依赖 `setup-bun`，服务账号没有建符号链接的权限）→ `install` → `test` → `compile`（打印 `exe_bytes`）→ `smoke test the exe`（摘 PATH + 四条断言）→ `gpu scenarios`（假 provider 喂双卡 / 单卡 / 断联 / 无卡）→ `queue dispatch`（提交→自己上卡→跑完回写 `run_id`）→ `progress from a live run`（真子进程打 tqdm 行）→ `history across daemon restarts`（两次 `daemon --once` 跨过 15 秒采样下限）→ `perf budget`（`doctor --soak` 跑 20 秒报 CPU / RSS）→ `diagnose subprocess layer`（`doctor --probe`，信息性）→ `acceptance self-check`（`doctor --acceptance` 写出 `acceptance.json`，校验条目状态与「待真机」都带验法）→ `acceptance matrix guard`（矩阵在不在、待真机行不超过 8 条）→ `pack zip`（量 exe/zip 体积）→ `checksum`（exe 与 zip 各一行 SHA256）→ `publish release`（仅 tag）→ `artifact`（仅供人查，失败不弄红）→ 分支结束。任一硬步骤失败即不发布。
 
 另有一条手动工作流 `soak.yml`：30 分钟长浸泡（`doctor --soak --seconds 1800`），断言轮数、RSS、增长与 CPU，数字写进运行摘要。不跟 push 跑——机器上只有一个 runner，长任务会把门禁堵住。
 
