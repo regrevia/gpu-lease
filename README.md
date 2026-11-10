@@ -20,7 +20,7 @@ v0.3 加了排队：`gpulease submit --name "训练 SDXL LoRA" --need-vram 12 --
 
 ## 下载（Windows）
 
-**[gpulease 0.6.0](https://github.com/regrevia/gpu-lease/releases/tag/v0.6.0)** → `gpulease-windows-x64.zip`（54,746,948 字节 / 52.2 MB，SHA256 `e9055f69…3d7f45`），解压得到 `gpulease.exe`（115,337,728 字节 / 110 MB，SHA256 `7fd8227e…c1670d`）。
+**[gpulease 0.7.0](https://github.com/regrevia/gpu-lease/releases/tag/v0.7.0)** → `gpulease-windows-x64.zip`（54,747,790 字节 / 52.2 MB，SHA256 `27297520…31be16`），解压得到 `gpulease.exe`（115,340,288 字节 / 110 MB，SHA256 `c970977c…2a44c3`）。
 旁边 `SHA256SUMS.txt` 里有 exe 与 zip 两行，先核对再运行：
 
 ```powershell
@@ -121,6 +121,8 @@ v0.4.0 已发布（[release](https://github.com/regrevia/gpu-lease/releases/tag/
 v0.5.0 可下载（[release](https://github.com/regrevia/gpu-lease/releases/tag/v0.5.0)，tag run `42763081158`）：`install` / `uninstall` 在自托管 Windows 节点的真注册表、真用户 PATH 上装过、敲过、卸过（门禁 `42762620953` 20 步全绿）；这一步先抓出「卸完用户 PATH 还原不了」，修掉之后才打的 tag。`bun test` 112 条绿 / 282 断言。节点上没有 NVIDIA 卡，显存读数、按进程显存、eGPU 断联仍然只有假 SMI 覆盖的逻辑路径，没在真卡上验过。
 
 v0.6.0 可下载（[release](https://github.com/regrevia/gpu-lease/releases/tag/v0.6.0)，tag run `42782258490`）：任务认会话——`--session`、`GPULEASE_SESSION`、`DSH_SESSION_ID` 三条来源，`ls` / `watch` / `serve` 面板 / `queue` 都标出「哪个会话的任务」；队列任务派出去时认入队时记的会话，daemon 自己的环境不覆盖；老库启动自动加列，不丢历史。门禁 20 步全绿，真机上验了「`--session` 原样落库」与「没给就是 null」。`bun test` 123 条绿 / 311 断言。节点没有 NVIDIA 卡，显存与按进程占用仍只有假 SMI 覆盖的逻辑路径。
+
+v0.7.0 可下载（[release](https://github.com/regrevia/gpu-lease/releases/tag/v0.7.0)，tag run `42811132081`）：多开会话时按会话收口——`gpulease sessions` 一行一个会话，带在跑几个、排队几个、最差判定、整体进度（只平均真报了百分比的任务，并写明覆盖几个；一个都没报就说「进度看不到」）；`ls` / `watch` / `serve` 底部也跟着出小结，两个以上会话才出现。同时修掉多会话同时 `run` 时的 `database is locked`：先设 `busy_timeout` 再切 WAL，切不动就退让重试；4 会话同起进回归。门禁 `42807901871` 20 步全绿，真机上验了排队任务按会话出现在 `sessions --json` 里、人读输出带短名；tag run 重建后同号。`bun test` 130 条绿 / 346 断言。值班自身开销 11 tick、平均 403.5 ms、CPU 0.9%、RSS 27.5 MB。节点没有 NVIDIA 卡，显存与按进程占用仍只有假 SMI 覆盖的逻辑路径。
 
 ## 没有 NVIDIA 卡也能验
 

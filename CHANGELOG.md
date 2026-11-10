@@ -17,7 +17,9 @@
 ### 验
 
 - `bun test` 130 条 / 346 断言（会话汇总 5 条 + `sessions` 端到端 1 条 + 并发起活 1 条）。
-- 自托管 Windows 门禁：待跑。
+- 自托管 Windows 门禁 `42807901871`：20 步全绿；真机上验了 `submit --session gate-sess` 后 `sessions --json` 里有这一行且 `queued >= 1`、`sessions --no-color` 打出短名 `gate-ses`，验完 `cancel` 清掉。
+- 值班自身开销（`doctor --soak --seconds 20`）：11 tick，平均 399.7 ms / 最大 1096 ms，CPU 0.8%，RSS 27.7 MB（峰值 27.7 MB），阈值内。
+- 发布 tag run `42811132081`：同 20 步全绿；`gpulease.exe` 115,340,288 字节 / SHA256 `c970977c…2a44c3`，`gpulease-windows-x64.zip` 54,747,790 字节 / SHA256 `27297520…31be16`；tag run 上值班开销 11 tick / 平均 403.5 ms / CPU 0.9% / RSS 27.5 MB。
 
 ### 诚实边界
 
