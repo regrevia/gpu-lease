@@ -94,6 +94,9 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 
 | 文档 | 内容 |
 |---|---|
+| [五分钟上手](docs/QUICKSTART.md) | 装上、看一眼卡、托管一个任务、看进度、排队换卡 |
+| [CLI 与 JSON 契约](docs/08-contract.md) | v1.0 冻结：命令、退出码、每个 `--json` 的字段、HTTP 路由、semver 规则 |
+| [安装与排障](docs/07-install-and-troubleshooting.md) | 装、升级、卸、七种常见现象怎么查 |
 | [产品设计](docs/02-product-design.md) | 命题、用户、核心概念、播报规则表、面板、路线 |
 | [技术架构](docs/03-architecture.md) | 模块、采集、归属、适配器、规则引擎、API、打包 |
 | [竞品分析](docs/research/competitors.md) | 11 个同类项目 + Windows 桌面工具 + 空白在哪 |
