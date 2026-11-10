@@ -172,4 +172,48 @@ describe("CLI 端到端（假 GPU）", () => {
     const ls = await cli(["ls", "--no-color"]);
     expect(ls.out).toContain("会话 s-e2e-f");
   }, 60000);
+  test("会话汇总：sessions 把排队任务算进会话，没会话号的单独一行", async () => {
+    const a = await cli(
+      ["submit", "--name", "汇总-甲", "--session", "s-sess-aa", "--", process.execPath, "-e", "0"],
+      "two-gpu",
+      { GPULEASE_SESSION: "", DSH_SESSION_ID: "" },
+    );
+    expect(a.code).toBe(0);
+    const b = await cli(
+      ["submit", "--name", "汇总-乙", "--", process.execPath, "-e", "0"],
+      "two-gpu",
+      { GPULEASE_SESSION: "", DSH_SESSION_ID: "" },
+    );
+    expect(b.code).toBe(0);
+
+    const json = await cli(["sessions", "--json"], "two-gpu");
+    const rows = JSON.parse(json.out) as { session: string | null; label: string; queued: number }[];
+    expect(rows.find((r) => r.session === "s-sess-aa")!.queued).toBeGreaterThanOrEqual(1);
+    expect(rows.find((r) => r.session === null)!.label).toBe("未标会话");
+
+    const human = await cli(["sessions", "--no-color"], "two-gpu");
+    expect(human.out).toContain("s-sess-a");
+    expect(human.out).toContain("个排队");
+    expect(human.out).toContain("还没上卡");
+  }, 60000);
+  test("并发起活：多个会话同时 run 不撞库", async () => {
+    const names = ["并一", "并二", "并三", "并四"];
+    const results = await Promise.all(
+      names.map((name) =>
+        cli(
+          ["run", "--name", name, "--session", `s-conc-${name}`, "--", process.execPath, "-e", "await Bun.sleep(300)"],
+          "two-gpu",
+          { GPULEASE_SESSION: "", DSH_SESSION_ID: "" },
+        ),
+      ),
+    );
+    for (const result of results) expect(result.code).toBe(0);
+    const ls = await cli(["ls", "--json"]);
+    const state = JSON.parse(ls.out) as { tasks: { run: { name: string; session: string | null } }[] };
+    for (const name of names) {
+      const task = state.tasks.find((t) => t.run.name === name);
+      expect(task).toBeDefined();
+      expect(task!.run.session).toBe(`s-conc-${name}`);
+    }
+  }, 60000);
 });

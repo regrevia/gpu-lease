@@ -34,20 +34,21 @@ bun src/main.ts <子命令> --json
 
 | 命令 | 参数 | 做什么 | 退出码 |
 |---|---|---|---|
-| `run` | `--name` / `-n`（必填）、`--gpu` / `-g` N、`--log` FILE、`--` 之后是被执行的命令（必填） | 托管起一个任务，注入 `GPULEASE_RUN_ID` / `GPULEASE_TASK_ID` / `GPULEASE_RUN_NAME` / `CUDA_VISIBLE_DEVICES` | 子进程的退出码；起不来 1；用法错 2 |
+| `run` | `--name` / `-n`（必填）、`--gpu` / `-g` N、`--log` FILE、`--session` ID、`--` 之后是被执行的命令（必填） | 托管起一个任务，注入 `GPULEASE_RUN_ID` / `GPULEASE_TASK_ID` / `GPULEASE_RUN_NAME` / `CUDA_VISIBLE_DEVICES` | 子进程的退出码；起不来 1；用法错 2 |
 | `ls` | `--json`、`--no-color` | 一行一个任务 + 每张卡的占用 | 0 |
 | `watch` | `--fast`（1 秒刷新）、`--no-color` | 终端面板，`q` / `Ctrl+C` 退出 | 0 |
 | `serve` | `--port`（默认 7788）、`--host`（默认 127.0.0.1） | 本地面板 + JSON/SSE 接口 | 收到 SIGINT / SIGTERM 后 0 |
 | `daemon` | `--interval` 毫秒（默认 5000）、`--webhook` URL、`--once`、`--quiet` | 常驻值班：记采样、判健康、发告警、给队列派卡 | 0 |
-| `submit` | `--name`（必填）、`--need-vram` / `--need-mb` MB、`--priority` / `-p` N、`--` 之后是命令（必填） | 入队，等 daemon 派卡 | 0；用法错 2 |
+| `submit` | `--name`（必填）、`--need-vram` / `--need-mb` MB、`--priority` / `-p` N、`--session` ID、`--` 之后是命令（必填） | 入队，等 daemon 派卡 | 0；用法错 2 |
 | `queue` | `--json` | 队列，含每个任务为什么在等 | 0 |
+| `sessions` | `--json` | 按会话汇总在跑 / 排队 / 最差判定 / 整体进度 | 0 |
 | `cancel` | `<队列号>` | 取消一个还在排队的任务 | 0；没有这个号 1；已经不在排队 1；不给号 2 |
 | `alerts` | `--json`、`--limit`（默认 30） | 最近的告警事件 | 0 |
 | `history` | `--minutes`（默认 30，最小 1）、`--gpu` N、`--json` | 每张卡最近一段时间的采样曲线 | 0 |
 | `doctor` | `--json`、`--bundle`、`--soak`、`--seconds`（默认 30）、`--probe` | 自检；`--bundle` 生成诊断包，`--soak` 量值班开销 | 0 |
 | `install` | `--autostart`、`--no-start-menu`、`--dir` DIR、`--json` | 装进 Windows 用户目录 | 0；非 Windows 1 |
 | `uninstall` | `--purge`、`--dir` DIR、`--json` | 卸载 | 0；有删不掉的 1；非 Windows 1 |
-| `--version` / `-v` / `version` | — | 打印版本号（当前 `0.5.0`） | 0 |
+| `--version` / `-v` / `version` | — | 打印版本号（当前 `0.7.0`） | 0 |
 | 不带参数 / `--help` / `-h` / `help` | — | 打印用法 | 0 |
 
 退出码只有三个数：
@@ -327,6 +328,52 @@ $ gpulease nope
 | `session` | string \| null | 入队时的会话号（`--session` 或 `GPULEASE_SESSION` / `DSH_SESSION_ID`）；派出去时写进对应任务的 `run.session`，daemon 自己的环境变量不会盖掉它 |
 
 排序：`created_at` 倒序，最新入队的在前，最多 50 条。这只决定列表顺序，不决定派卡顺序——派卡是 `priority` 高的先上，同优先级按入队时间。
+
+### `sessions --json`
+
+```json
+[
+  {
+    "session": null,
+    "label": "未标会话",
+    "running": 0,
+    "queued": 1,
+    "worst": "ok",
+    "progress": null,
+    "with_progress": 0
+  },
+  {
+    "session": "dsh-aaa",
+    "label": "dsh-aaa",
+    "running": 0,
+    "queued": 1,
+    "worst": "ok",
+    "progress": null,
+    "with_progress": 0
+  }
+]
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `session` | string \| null | 会话号全量；没有会话号的归到 `null` 这一桶 |
+| `label` | string | 展示名：`session` 去掉 `session-` 前缀后的前 8 位；`null` 桶固定是 `未标会话` |
+| `running` | number | 这个会话当前在跑（`ended_at` 为 null）的任务数 |
+| `queued` | number | 这个会话还在排队（`queued` / `starting`）的队列条目数 |
+| `worst` | `"lost"` \| `"failed"` \| `"stalled"` \| `"suspect"` \| `"slow"` \| `"ok"` \| `"unknown"` | 在跑任务里最差的那一档判定；一个都没在跑时是 `ok`，人读输出改说「还没上卡」 |
+| `progress` | number \| null | 在跑任务里真报了百分比的那些取平均（四舍五入到整数）；一个都没报是 `null`，不造数字 |
+| `with_progress` | number | 上面那个平均覆盖了几个任务；和 `running` 一比就知道覆盖率 |
+
+排序：`running` 倒序 → `queued` 倒序 → `worst` 从坏到好 → `label`。只收还没结束的任务和还在排队的条目，历史任务不进这个列表（要看历史用 `ls --json`）。
+
+人读输出一行一个会话，例如：
+
+```text
+未标会话  1 个排队  还没上卡
+dsh-aaa  2 个在跑 · 1 个排队 · 最差 偏慢  整体 40%（1/2 个报进度）
+```
+
+`ls`、`watch`、`serve` 面板底部也会带同样的小结，但只在有两个以上会话时出现，单个会话不占地方。
 
 ### `alerts --json`
 

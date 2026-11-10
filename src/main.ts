@@ -2,7 +2,7 @@
 // hier：run（起任务并记归属）、ls、watch、serve、doctor、version。
 
 import { buildState } from "./state";
-import { renderList } from "./render";
+import { renderList, renderSessions } from "./render";
 import { commandWatch } from "./tui";
 import { commandRun } from "./run";
 import { buildDoctor, renderDoctor, renderSoak, soak, writeBundle, VERSION } from "./doctor";
@@ -19,6 +19,7 @@ import {
 } from "./store";
 import { buildHistory, renderHistory } from "./history";
 import { resolveSession, shortSession } from "./session";
+import { summarizeSessions } from "./sessions";
 import { commandInstall, commandUninstall } from "./install";
 
 const HELP = `gpulease ${VERSION} — 显卡值班员
@@ -33,6 +34,7 @@ const HELP = `gpulease ${VERSION} — 显卡值班员
     （--need-mb 是 --need-vram 的别名，两个都收；不给 --session 就用
       GPULEASE_SESSION，再不然用 DSH_SESSION_ID）
   gpulease queue [--json]
+  gpulease sessions [--json]
   gpulease cancel <队列号>
   gpulease alerts [--json] [--limit 30]
   gpulease history [--minutes 30] [--gpu N] [--json]
@@ -166,6 +168,26 @@ async function commandQueue(argv: string[]): Promise<number> {
     const who = job.session ? ` · 会话 ${shortSession(job.session)}` : "";
     console.log(`${label}  ${job.id}  ${job.name}${need}${gpu}${reason}${run}${who}`);
   }
+  return 0;
+}
+
+
+async function commandSessions(argv: string[]): Promise<number> {
+  const state = await buildState({ includeEnded: false });
+  const jobs = listJobs(openStore(), 200);
+  const sessions = summarizeSessions(
+    state.tasks.map((t) => ({
+      session: t.run.session,
+      verdict: t.verdict,
+      percent: t.progress?.percent ?? null,
+    })),
+    jobs.map((job) => ({ session: job.session, state: job.state })),
+  );
+  if (argv.includes("--json")) {
+    console.log(JSON.stringify(sessions, null, 2));
+    return 0;
+  }
+  for (const line of renderSessions(sessions, { color: color() })) console.log(line);
   return 0;
 }
 
@@ -305,6 +327,8 @@ export async function main(argv: string[]): Promise<number> {
       return await commandSubmit(rest);
     case "queue":
       return await commandQueue(rest);
+    case "sessions":
+      return await commandSessions(rest);
     case "cancel":
       return await commandCancel(rest);
     case "daemon":

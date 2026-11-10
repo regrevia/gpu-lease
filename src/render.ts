@@ -6,6 +6,7 @@ import { humanDuration } from "./rules";
 import { humanEta } from "./progress";
 import type { Gpu } from "./types";
 import { shortSession } from "./session";
+import { summarizeSessions, type SessionSummary } from "./sessions";
 
 export const VERDICT_LABEL: Record<string, string> = {
   ok: "正常",
@@ -161,6 +162,7 @@ export function renderPanel(state: PanelState, opts: RenderOptions): string[] {
     );
   }
 
+  lines.push(...renderSessionFooter(state, opts));
   return lines;
 }
 
@@ -183,5 +185,41 @@ export function renderList(state: PanelState, opts: RenderOptions): string[] {
   }
   if (!lines.length) lines.push(paint("还没有记录：用 gpulease run --name 训练 -- python train.py 起一个", C.dim, color));
   if (state.degraded.length) lines.push(paint(`· ${state.degraded[0]}`, C.dim, color));
+  lines.push(...renderSessionFooter(state, opts));
   return lines;
+}
+
+/** 每个会话一行：在跑几个、排队几个、最差什么样、整体到哪。 */
+export function sessionLine(s: SessionSummary, color: boolean): string {
+  const bits: string[] = [];
+  if (s.running) bits.push(`${s.running} 个在跑`);
+  if (s.queued) bits.push(`${s.queued} 个排队`);
+  // 还没上卡的会话没有"最差判定"可言，别拿一个空的"正常"充数。
+  if (!s.running) {
+    return `${paint(s.label, C.bold, color)}  ${bits.join(" · ")}  ${paint("还没上卡", C.dim, color)}`;
+  }
+  bits.push(`最差 ${VERDICT_LABEL[s.worst] ?? s.worst}`);
+  const progress =
+    s.progress === null
+      ? "进度看不到"
+      : `整体 ${s.progress}%（${s.with_progress}/${s.running} 个报进度）`;
+  return `${paint(s.label, C.bold, color)}  ${bits.join(" · ")}  ${paint(progress, C.dim, color)}`;
+}
+
+/** `sessions` 命令的正文。 */
+export function renderSessions(sessions: SessionSummary[], opts: RenderOptions): string[] {
+  if (!sessions.length) {
+    return [paint("还没有带会话的任务：run --session 名字 或 submit --session 名字 起一个", C.dim, opts.color)];
+  }
+  return sessions.map((s) => sessionLine(s, opts.color));
+}
+
+/** watch / serve / ls 共用的按会话小结：只有一个会话就不占行。 */
+export function renderSessionFooter(state: PanelState, opts: RenderOptions): string[] {
+  const running = state.tasks.filter((t) => t.run.ended_at === null);
+  const sessions = summarizeSessions(
+    running.map((t) => ({ session: t.run.session, verdict: t.verdict, percent: t.progress?.percent ?? null })),
+  );
+  if (sessions.length < 2) return [];
+  return ["", paint(`按会话（${sessions.length} 个）`, C.dim, opts.color), ...sessions.map((s) => sessionLine(s, opts.color))];
 }

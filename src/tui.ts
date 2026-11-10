@@ -42,8 +42,10 @@ export async function commandWatch(argv: string[]): Promise<number> {
       const running = state.tasks.filter((t) => t.run.ended_at === null);
       const worstVerdict = running.length ? worst(running.map((t) => t.verdict)) : null;
       const stamp = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+      const sessions = new Set(running.map((t) => t.run.session ?? ""));
+      const sessionBit = sessions.size >= 2 ? ` · ${sessions.size} 个会话` : "";
       const summary = running.length
-        ? ` ${running.length} 个任务在跑 · 最差 ${VERDICT_LABEL[worstVerdict ?? "ok"]}`
+        ? ` ${running.length} 个任务在跑 · 最差 ${VERDICT_LABEL[worstVerdict ?? "ok"]}${sessionBit}`
         : "";
       const footer = `${stamp} 刷新 · q 退出${summary}`;
       body.push(color ? `\x1b[2m${footer}\x1b[0m` : footer);

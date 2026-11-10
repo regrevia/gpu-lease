@@ -11,11 +11,27 @@ import { stateDir } from "./paths";
 
 export type RunRow = Run;
 
+/** 切 WAL；被别的进程占着就退让重试，最后仍不行也不阻塞启动（回到 rollback 日志也能用）。 */
+function enableWal(db: Database): void {
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    try {
+      db.run("PRAGMA journal_mode = WAL");
+      return;
+    } catch {
+      if (attempt === 59) return;
+      Atomics.wait(pause, 0, 0, 50);
+    }
+  }
+}
+
 export function openStore(path = `${stateDir()}/gpulease.db`): Database {
   mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true });
-  db.run("PRAGMA journal_mode = WAL");
-  db.run("PRAGMA busy_timeout = 3000");
+  // busy_timeout 必须先设，再切 WAL；而且切 WAL 拿不到锁时 SQLite 不走 busy_timeout，
+  // 直接回 locked——多个会话同时启动时就是这样撞上的，所以这里自己退让重试。
+  db.run("PRAGMA busy_timeout = 5000");
+  enableWal(db);
   db.run(`
     CREATE TABLE IF NOT EXISTS runs (
       id TEXT PRIMARY KEY,

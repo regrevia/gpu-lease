@@ -175,6 +175,19 @@ jobs:
           if (-not $noSess) { throw "ls --json does not contain smoke-nosess" }
           if ($null -ne $noSess.run.session) { throw "session should be null without --session, got [$($noSess.run.session)]" }
 
+          # 会话汇总：排队中的任务也要按会话出现在 sessions --json 里，人读输出带短名。
+          & $exe submit --name sess-q --session gate-sess -- cmd /c exit 0 2>&1 | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "submit --session exited $LASTEXITCODE" }
+          $sessRows = ((& $exe sessions --json 2>&1) | Out-String) | ConvertFrom-Json
+          $sessRow = $sessRows | Where-Object { $_.session -eq "gate-sess" } | Select-Object -First 1
+          if (-not $sessRow) { throw "sessions --json does not contain gate-sess" }
+          if ($sessRow.queued -lt 1) { throw "sessions --json queued=$($sessRow.queued), expected at least 1" }
+          $sessHuman = & $exe sessions --no-color 2>&1 | Out-String
+          if ($sessHuman -notmatch "gate-ses") { throw "sessions human output does not show the session label" }
+          $queuedJob = ((& $exe queue --json 2>&1) | Out-String) | ConvertFrom-Json | Where-Object { $_.name -eq "sess-q" } | Select-Object -First 1
+          if ($queuedJob) { & $exe cancel $queuedJob.id 2>&1 | Out-Null }
+          if ($LASTEXITCODE -ne 0) { throw "cancel sess-q exited $LASTEXITCODE" }
+
           # A failing child must be reported, not swallowed.
           & $exe run --name smoke-fail -- powershell -NoProfile -Command "exit 7" 2>&1 | Out-Null
           $failCode = $LASTEXITCODE
