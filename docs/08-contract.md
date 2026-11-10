@@ -134,7 +134,8 @@ $ gpulease nope
         "pids": [17998],
         "gpu_hint": null,
         "log_path": "/tmp/gpulease-doc/logs/rmwa004cuuxix.log",
-        "last_output_at": 1794273312280
+        "last_output_at": 1794273312280,
+        "session": "session-7acba1c0-4898-41a1-9f36-27c6f780a59f"
       },
       "verdict": "ok",
       "sentence": "「进度样本」在跑，正常",
@@ -160,7 +161,8 @@ $ gpulease nope
         "pids": [15334],
         "gpu_hint": null,
         "log_path": "/tmp/gpulease-doc/logs/rmw9zro5h2s2q.log",
-        "last_output_at": 1794272918021
+        "last_output_at": 1794272918021,
+        "session": null
       },
       "verdict": "lost",
       "sentence": "「下载 FLUX 模型」的进程已经不在了（不是正常退出）",
@@ -240,6 +242,7 @@ $ gpulease nope
 | `gpu_hint` | number \| null | `--gpu` 给的值；没给是 null |
 | `log_path` | string \| null | 日志文件；没落到盘是 null |
 | `last_output_at` | number \| null | 最后一次有新输出的时间；从没输出是 null |
+| `session` | string \| null | 起这个任务时用的会话号：`--session` 显式给的、环境变量 `GPULEASE_SESSION` / `DSH_SESSION_ID` 带的，或队列任务入队时记下的。都没有就是 null。最长 80 字符，展示时截 8 个 |
 
 `progress`：
 
@@ -268,7 +271,8 @@ $ gpulease nope
     "created_at": 1794273056470,
     "started_at": 1794273056519,
     "ended_at": null,
-    "reason": null
+    "reason": null,
+    "session": "session-7acba1c0-4898-41a1-9f36-27c6f780a59f"
   },
   {
     "id": "qmw9zp94pwah",
@@ -283,7 +287,8 @@ $ gpulease nope
     "created_at": 1794272805241,
     "started_at": null,
     "ended_at": 1794272805378,
-    "reason": "手动取消"
+    "reason": "手动取消",
+    "session": null
   },
   {
     "id": "qmw9zp94bqkd",
@@ -298,7 +303,8 @@ $ gpulease nope
     "created_at": 1794272805227,
     "started_at": null,
     "ended_at": null,
-    "reason": "没有卡余量够 12 GB，等一个结束"
+    "reason": "没有卡余量够 12 GB，等一个结束",
+    "session": "session-7acba1c0-4898-41a1-9f36-27c6f780a59f"
   }
 ]
 ```
@@ -318,6 +324,7 @@ $ gpulease nope
 | `started_at` | number \| null | 起跑时间；没起是 null |
 | `ended_at` | number \| null | 结束时间；没结束是 null |
 | `reason` | string \| null | 为什么在等、为什么取消。可能的值：`还没看到可用的卡`、`卡上都已有任务，等一个结束`、`没有卡余量够 X，等一个结束`、`卡 N 上没有我们的任务（余量看不到，先占上）`、`卡 N 还有 X 空闲`、`手动取消` |
+| `session` | string \| null | 入队时的会话号（`--session` 或 `GPULEASE_SESSION` / `DSH_SESSION_ID`）；派出去时写进对应任务的 `run.session`，daemon 自己的环境变量不会盖掉它 |
 
 排序：`created_at` 倒序，最新入队的在前，最多 50 条。这只决定列表顺序，不决定派卡顺序——派卡是 `priority` 高的先上，同优先级按入队时间。
 

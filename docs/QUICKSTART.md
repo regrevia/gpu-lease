@@ -127,6 +127,7 @@ gpulease submit --name "小推理" --need-vram 1024 -- python infer.py
 - `--need-vram` 单位 MB，`--need-mb` 是同义词。
 - `--priority` 越大越先派，默认 0。
 - 不写 `--need-vram` 就是不挑卡，哪张卡空就用哪张。
+- 在 dsh 会话里跑时，任务会自动记下会话号（`DSH_SESSION_ID`）；想手动指定就加 `--session 名字`，`ls` 和 `queue` 里能看到它的前 8 位。
 - 一张卡同时只放一个我们的任务；`--need-vram` 比卡的剩余显存大，就等下一个任务结束。
 - 值夜进程看得到任务结束（正常退出、崩了、进程被外面杀掉），卡位随之让出来，下一个自动起。
 

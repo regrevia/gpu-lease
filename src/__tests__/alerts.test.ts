@@ -16,6 +16,7 @@ function task(id: string, verdict: Verdict, name = "训练 SDXL LoRA"): TaskView
       exit_code: null,
       pids: [1],
       gpu_hint: null,
+      session: null,
       log_path: null,
       last_output_at: 0,
     },

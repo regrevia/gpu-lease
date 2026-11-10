@@ -5,6 +5,7 @@ import type { PanelState, TaskView } from "./state";
 import { humanDuration } from "./rules";
 import { humanEta } from "./progress";
 import type { Gpu } from "./types";
+import { shortSession } from "./session";
 
 export const VERDICT_LABEL: Record<string, string> = {
   ok: "正常",
@@ -107,8 +108,9 @@ export function taskLine(task: TaskView, color: boolean): string {
   const quiet = (Date.now() - task.since) / 1000;
   const since = task.verdict === "ok" ? "" : ` · ${humanDuration(quiet)}前`;
   const pid = task.run.root_pid ? ` pid ${task.run.root_pid}` : "";
+  const who = task.run.session ? `  ${paint(`会话 ${shortSession(task.run.session)}`, C.dim, color)}` : "";
   const progress = progressText(task);
-  return `${paint(label, verdictColor(task.verdict), color)}  ${task.sentence}${since}${progress}${paint(pid, C.dim, color)}`;
+  return `${paint(label, verdictColor(task.verdict), color)}  ${task.sentence}${since}${progress}${paint(pid, C.dim, color)}${who}`;
 }
 
 /** 进度只报日志里真读到的东西：百分比 + 原始计数 + 剩余时间（有才显示）。 */
@@ -176,7 +178,8 @@ export function renderList(state: PanelState, opts: RenderOptions): string[] {
   for (const task of state.tasks) {
     const when = new Date(task.run.started_at).toLocaleString("zh-CN", { hour12: false });
     const label = paint(VERDICT_LABEL[task.verdict] ?? task.verdict, verdictColor(task.verdict), color);
-    lines.push(`${label}  ${when}  ${task.sentence}${progressText(task)}`);
+    const who = task.run.session ? `  · 会话 ${shortSession(task.run.session)}` : "";
+    lines.push(`${label}  ${when}  ${task.sentence}${who}${progressText(task)}`);
   }
   if (!lines.length) lines.push(paint("还没有记录：用 gpulease run --name 训练 -- python train.py 起一个", C.dim, color));
   if (state.degraded.length) lines.push(paint(`· ${state.degraded[0]}`, C.dim, color));

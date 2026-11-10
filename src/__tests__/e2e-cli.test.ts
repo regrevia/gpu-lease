@@ -98,4 +98,78 @@ describe("CLI 端到端（假 GPU）", () => {
     expect(jobs.find((j) => j.name === "别名-vram")!.need_mb).toBe(8192);
     expect(jobs.find((j) => j.name === "别名-mb")!.need_mb).toBe(4096);
   }, 60000);
+
+  test("会话归属：run --session 落库，ls --json 读得回", async () => {
+    const started = await cli([
+      "run", "--name", "带会话", "--session", "s-e2e-flag", "--", process.execPath, "-e", "await Bun.sleep(200)",
+    ]);
+    expect(started.code).toBe(0);
+    const ls = await cli(["ls", "--json"]);
+    const state = JSON.parse(ls.out);
+    const task = state.tasks.find((t: { run: { name: string } }) => t.run.name === "带会话");
+    expect(task.run.session).toBe("s-e2e-flag");
+  }, 60000);
+
+  test("会话归属：没给 --session 时读 GPULEASE_SESSION，再没有就是 null", async () => {
+    const viaEnv = await cli([
+      "run", "--name", "环境会话", "--", process.execPath, "-e", "await Bun.sleep(200)",
+    ], "two-gpu", { GPULEASE_SESSION: "s-e2e-env", DSH_SESSION_ID: "" });
+    expect(viaEnv.code).toBe(0);
+    const none = await cli([
+      "run", "--name", "没有会话", "--", process.execPath, "-e", "await Bun.sleep(200)",
+    ], "two-gpu", { GPULEASE_SESSION: "", DSH_SESSION_ID: "" });
+    expect(none.code).toBe(0);
+
+    const ls = await cli(["ls", "--json"]);
+    const state = JSON.parse(ls.out);
+    const env = state.tasks.find((t: { run: { name: string } }) => t.run.name === "环境会话");
+    const bare = state.tasks.find((t: { run: { name: string } }) => t.run.name === "没有会话");
+    expect(env.run.session).toBe("s-e2e-env");
+    expect(bare.run.session).toBeNull();
+  }, 60000);
+
+  test("会话归属：submit 把会话带进队列，--session 压过环境变量", async () => {
+    const envOnly = await cli(
+      ["submit", "--name", "排队-环境", "--", process.execPath, "-e", "0"],
+      "two-gpu",
+      { GPULEASE_SESSION: "s-e2e-env", DSH_SESSION_ID: "" },
+    );
+    expect(envOnly.code).toBe(0);
+    const explicit = await cli(
+      ["submit", "--name", "排队-显式", "--session", "s-e2e-flag", "--", process.execPath, "-e", "0"],
+      "two-gpu",
+      { GPULEASE_SESSION: "s-e2e-env" },
+    );
+    expect(explicit.code).toBe(0);
+    const q = await cli(["queue", "--json"], "two-gpu");
+    const jobs = JSON.parse(q.out) as { name: string; session: string | null }[];
+    expect(jobs.find((j) => j.name === "排队-环境")!.session).toBe("s-e2e-env");
+    expect(jobs.find((j) => j.name === "排队-显式")!.session).toBe("s-e2e-flag");
+  }, 60000);
+
+  test("队列里起的活：认入队时的会话，不认 daemon 的环境变量", async () => {
+    const sub = await cli(
+      ["submit", "--name", "继承会话", "--session", "s-e2e-job", "--", process.execPath, "-e", "await Bun.sleep(150)"],
+      "two-gpu",
+      { GPULEASE_SESSION: "s-daemon-env" },
+    );
+    expect(sub.code).toBe(0);
+    const q = await cli(["queue", "--json"], "two-gpu");
+    const job = (JSON.parse(q.out) as { id: string; name: string }[]).find((j) => j.name === "继承会话")!;
+    const child = await cli(
+      ["run", "--name", "继承会话的任务", "--job", job.id, "--", process.execPath, "-e", "await Bun.sleep(150)"],
+      "two-gpu",
+      { GPULEASE_SESSION: "s-daemon-env" },
+    );
+    expect(child.code).toBe(0);
+    const ls = await cli(["ls", "--json"]);
+    const state = JSON.parse(ls.out);
+    const task = state.tasks.find((t: { run: { name: string } }) => t.run.name === "继承会话的任务");
+    expect(task.run.session).toBe("s-e2e-job");
+  }, 60000);
+
+  test("ls 人读输出里也能看见会话短名", async () => {
+    const ls = await cli(["ls", "--no-color"]);
+    expect(ls.out).toContain("会话 s-e2e-f");
+  }, 60000);
 });

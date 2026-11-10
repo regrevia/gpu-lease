@@ -12,7 +12,7 @@ import { buildState } from "./state";
 import type { DoctorReport, SoakReport } from "./types";
 import { probe } from "./collect/probe";
 
-export const VERSION = "0.5.0";
+export const VERSION = "0.6.0";
 
 async function eventLogCounts(): Promise<{ tdr_4101: number | null; nvlddmkm: number | null } | null> {
   if (!IS_WIN) return null;

@@ -5,13 +5,16 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { dirname } from "node:path";
 import { logDir } from "./paths";
-import { insertRun, openStore, updateJob, updateRun } from "./store";
+import { insertRun, getJob, openStore, updateJob, updateRun } from "./store";
+import { resolveSession } from "./session";
 
 export type RunOptions = {
   name: string;
   gpu: number | null;
   /** 由 daemon 从队列里起的时候带着；手动 run 是 null */
   jobId: string | null;
+  /** 显式指定的会话号；null 表示按 GPULEASE_SESSION / DSH_SESSION_ID 走 */
+  session: string | null;
   logPath: string | null;
   cwd: string;
   command: string[];
@@ -22,6 +25,7 @@ export function parseRunArgs(argv: string[]): RunOptions | { error: string } {
   let gpu: number | null = null;
   let logPath: string | null = null;
   let jobId: string | null = null;
+  let session: string | null = null;
   const rest: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -39,6 +43,8 @@ export function parseRunArgs(argv: string[]): RunOptions | { error: string } {
       logPath = argv[++i] ?? null;
     } else if (arg === "--job") {
       jobId = argv[++i] ?? null;
+    } else if (arg === "--session") {
+      session = argv[++i] ?? null;
     } else {
       rest.push(arg);
     }
@@ -46,7 +52,7 @@ export function parseRunArgs(argv: string[]): RunOptions | { error: string } {
 
   if (!name) return { error: "缺少 --name（给这个任务起个你认得出的名字）" };
   if (rest.length === 0) return { error: "缺少要执行的命令（用 -- 隔开，例如 -- python train.py）" };
-  return { name, gpu, jobId, logPath, cwd: process.cwd(), command: rest };
+  return { name, gpu, jobId, session, logPath, cwd: process.cwd(), command: rest };
 }
 
 export function newRunId(now = Date.now()): string {
@@ -88,15 +94,30 @@ export async function commandRun(argv: string[]): Promise<number> {
   const logPath = parsed.logPath ?? join(logDir(), `${id}.log`);
   mkdirSync(dirname(logPath), { recursive: true });
 
+  const db = openStore();
+  // 队列里起的活：入队那台机器上的会话号跟着 job 走，daemon 不必知道任何会话信息。
+  let inherited: string | null = null;
+  if (parsed.jobId) {
+    try {
+      inherited = getJob(db, parsed.jobId)?.session ?? null;
+    } catch {
+      inherited = null;
+    }
+  }
+  // 显式 --session 最优先；队列里起的活认入队时那个会话，不认 daemon 自己的环境——
+  // daemon 可能正好是被某个会话拉起来的，按环境走会把所有排队任务算到它头上。
+  const explicit = parsed.session ? resolveSession(parsed.session) : null;
+  const session = explicit ?? inherited ?? resolveSession(null);
+
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
     GPULEASE_RUN_ID: id,
     GPULEASE_TASK_ID: id,
     GPULEASE_RUN_NAME: parsed.name,
   };
+  if (session) env.GPULEASE_SESSION = session;
   if (parsed.gpu !== null) env.CUDA_VISIBLE_DEVICES = String(parsed.gpu);
 
-  const db = openStore();
   const header = `# gpulease run ${id} · ${parsed.name} · ${new Date(startedAt).toISOString()}\n# $ ${parsed.command.join(" ")}\n`;
   appendFileSync(logPath, header);
 
@@ -141,6 +162,7 @@ export async function commandRun(argv: string[]): Promise<number> {
     gpu_hint: parsed.gpu,
     log_path: logPath,
     last_output_at: startedAt,
+    session,
   });
 
   // 队列里起的活：把 run 挂回 job，队列那边才知道它真的在跑了。

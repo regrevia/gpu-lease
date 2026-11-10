@@ -1,5 +1,21 @@
 # 变更记录
 
+## 0.6.0
+
+### 新增
+
+- 任务认会话：`run` 和 `submit` 都收 `--session ID`；没给就读 `GPULEASE_SESSION`，再没有就读 `DSH_SESSION_ID`。多条 dsh 会话在同一台机器上拉起任务时，`ls`、`watch`、面板和 `queue` 都能标出「这是哪个会话的任务」，不用再靠 pid 猜。
+- `ls --json` 的 `run.session`、`queue --json` 的 `session` 是会话语义字段；`serve` 的面板任务行和 `queue` 的人读输出都带会话短名（前 8 位）。
+- 队列任务派出去时，会话跟着入队时的那条记录走：daemon 自己的 `DSH_SESSION_ID` 不会盖掉它——否则从某个会话里起的值班进程会把所有排队任务算到自己头上。
+- 老数据库不用删：`runs` / `jobs` 缺 `session` 列时启动自动 `ALTER TABLE ADD COLUMN`，旧记录读出来是 null。
+- `docs/08-contract.md` 补 `session` 字段与语义。按契约，次版本新增字段属于允许的变更。
+
+### 诚实边界
+
+- `session` 只是归属标签，不参与调度、不构成权限边界：两个会话仍然共用同一套队列与卡位。谁都能 `cancel` 别人的任务。
+- 自动识别依赖 dsh 把 `DSH_SESSION_ID` 注进子进程环境；不在 dsh 里跑就没有，字段为 null，不会编一个。
+- 会话号存全量（最长 80 字符），界面只显示前 8 位；`session-` 前缀在展示时剥掉。
+
 ## 0.5.0
 
 ### 新增

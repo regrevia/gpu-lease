@@ -29,7 +29,8 @@ export function openStore(path = `${stateDir()}/gpulease.db`): Database {
       pids TEXT NOT NULL DEFAULT '[]',
       gpu_hint INTEGER,
       log_path TEXT,
-      last_output_at INTEGER
+      last_output_at INTEGER,
+      session TEXT
     )
   `);
   db.run("CREATE INDEX IF NOT EXISTS runs_started ON runs(started_at DESC)");
@@ -70,7 +71,8 @@ export function openStore(path = `${stateDir()}/gpulease.db`): Database {
       created_at INTEGER NOT NULL,
       started_at INTEGER,
       ended_at INTEGER,
-      reason TEXT
+      reason TEXT,
+      session TEXT
     )
   `);
   db.run("CREATE INDEX IF NOT EXISTS jobs_state ON jobs(state, priority DESC, created_at ASC)");
@@ -87,7 +89,17 @@ export function openStore(path = `${stateDir()}/gpulease.db`): Database {
     )
   `);
   db.run("CREATE INDEX IF NOT EXISTS samples_at ON samples(at DESC)");
+  // 老库没有 session 列（0.5 及更早），补上；新库上面建表时已经有了，这里什么都不做。
+  ensureColumn(db, "runs", "session");
+  ensureColumn(db, "jobs", "session");
   return db;
+}
+
+/** SQLite 没有 ADD COLUMN IF NOT EXISTS，先查表结构再补。列名是写死的，不接外部输入。 */
+function ensureColumn(db: Database, table: "runs" | "jobs", column: string): void {
+  const cols = db.query(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (cols.some((c) => c.name === column)) return;
+  db.run(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
 }
 
 type Row = {
@@ -103,6 +115,7 @@ type Row = {
   gpu_hint: number | null;
   log_path: string | null;
   last_output_at: number | null;
+  session: string | null;
 };
 
 function toRun(row: Row): Run {
@@ -117,8 +130,8 @@ function toRun(row: Row): Run {
 
 export function insertRun(db: Database, run: Run): void {
   db.run(
-    `INSERT INTO runs (id,name,command,cwd,root_pid,started_at,ended_at,exit_code,pids,gpu_hint,log_path,last_output_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO runs (id,name,command,cwd,root_pid,started_at,ended_at,exit_code,pids,gpu_hint,log_path,last_output_at,session)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       run.id,
       run.name,
@@ -132,6 +145,7 @@ export function insertRun(db: Database, run: Run): void {
       run.gpu_hint,
       run.log_path,
       run.last_output_at,
+      run.session,
     ],
   );
 }
@@ -247,15 +261,29 @@ export type Job = {
   started_at: number | null;
   ended_at: number | null;
   reason: string | null;
+  /** 入队时那台机器上的会话号；daemon 起任务时继承给 run。 */
+  session: string | null;
 };
 
 export function insertJob(
   db: Database,
-  job: Pick<Job, "id" | "name" | "command" | "cwd" | "need_mb" | "priority"> & { created_at?: number },
+  job: Pick<Job, "id" | "name" | "command" | "cwd" | "need_mb" | "priority"> & {
+    created_at?: number;
+    session?: string | null;
+  },
 ): void {
   db.run(
-    `INSERT INTO jobs (id,name,command,cwd,need_mb,priority,created_at) VALUES (?,?,?,?,?,?,?)`,
-    [job.id, job.name, job.command, job.cwd, job.need_mb, job.priority, job.created_at ?? Date.now()],
+    `INSERT INTO jobs (id,name,command,cwd,need_mb,priority,created_at,session) VALUES (?,?,?,?,?,?,?,?)`,
+    [
+      job.id,
+      job.name,
+      job.command,
+      job.cwd,
+      job.need_mb,
+      job.priority,
+      job.created_at ?? Date.now(),
+      job.session ?? null,
+    ],
   );
 }
 

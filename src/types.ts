@@ -39,6 +39,8 @@ export type Run = {
   gpu_hint: number | null;
   log_path: string | null;
   last_output_at: number | null;
+  /** 这条任务是哪个会话起的（DSH 的 DSH_SESSION_ID 或 --session）；null 表示不知道。 */
+  session: string | null;
 };
 
 export type Verdict =

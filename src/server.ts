@@ -83,6 +83,7 @@ function draw(s) {
     const row = el("div", "task");
     row.append(el("span", "tag " + t.verdict, LABEL[t.verdict] || t.verdict), el("span", null, t.sentence));
     row.append(el("span", "pid", t.run.root_pid ? "pid " + t.run.root_pid : ""));
+    if (t.run.session) row.append(el("span", "pid", "会话 " + t.run.session.replace(/^session-/, "").slice(0, 8)));
     tasks.append(row);
   }
   const notes = $("notes"); notes.replaceChildren();

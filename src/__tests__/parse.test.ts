@@ -20,6 +20,7 @@ const run = (patch: Partial<Run> = {}): Run => ({
   exit_code: null,
   pids: [100],
   gpu_hint: 0,
+  session: null,
   log_path: null,
   last_output_at: Date.now() - 5_000,
   ...patch,

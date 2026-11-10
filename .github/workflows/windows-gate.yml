@@ -161,6 +161,20 @@ jobs:
           if ($task.run.exit_code -ne 0) { throw "recorded exit_code=$($task.run.exit_code), expected 0" }
           if ($task.verdict -ne "ok") { throw "a cleanly finished run should judge ok, got $($task.verdict)" }
 
+          # 会话归属：显式 --session 必须原样落进 ls --json；没有就写 null，不编。
+          & $exe run --name smoke-sess --session gate-sess -- powershell -NoProfile -Command "exit 0" 2>&1 | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "run --session exited $LASTEXITCODE" }
+          $sessState = ((& $exe ls --json 2>&1) | Out-String) | ConvertFrom-Json
+          $sessTask = $sessState.tasks | Where-Object { $_.run.name -eq "smoke-sess" } | Select-Object -First 1
+          if (-not $sessTask) { throw "ls --json does not contain smoke-sess" }
+          if ($sessTask.run.session -ne "gate-sess") { throw "session recorded as [$($sessTask.run.session)], expected gate-sess" }
+
+          & $exe run --name smoke-nosess -- powershell -NoProfile -Command "exit 0" 2>&1 | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "run without --session exited $LASTEXITCODE" }
+          $noSess = (((& $exe ls --json 2>&1) | Out-String) | ConvertFrom-Json).tasks | Where-Object { $_.run.name -eq "smoke-nosess" } | Select-Object -First 1
+          if (-not $noSess) { throw "ls --json does not contain smoke-nosess" }
+          if ($null -ne $noSess.run.session) { throw "session should be null without --session, got [$($noSess.run.session)]" }
+
           # A failing child must be reported, not swallowed.
           & $exe run --name smoke-fail -- powershell -NoProfile -Command "exit 7" 2>&1 | Out-Null
           $failCode = $LASTEXITCODE

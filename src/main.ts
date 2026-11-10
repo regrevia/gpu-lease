@@ -18,18 +18,20 @@ import {
   updateJob,
 } from "./store";
 import { buildHistory, renderHistory } from "./history";
+import { resolveSession, shortSession } from "./session";
 import { commandInstall, commandUninstall } from "./install";
 
 const HELP = `gpulease ${VERSION} — 显卡值班员
 
 用法：
-  gpulease run --name 训练 [--gpu 0] [--log FILE] -- python train.py
+  gpulease run --name 训练 [--gpu 0] [--log FILE] [--session ID] -- python train.py
   gpulease ls [--json]
   gpulease watch [--fast] [--no-color]
   gpulease serve [--port 7788] [--host 127.0.0.1]
   gpulease daemon [--interval 5000] [--webhook URL] [--once]
-  gpulease submit --name 训练 [--need-vram 12] [--priority 5] -- python train.py
-    （--need-mb 是 --need-vram 的别名，两个都收）
+  gpulease submit --name 训练 [--need-vram 12] [--priority 5] [--session ID] -- python train.py
+    （--need-mb 是 --need-vram 的别名，两个都收；不给 --session 就用
+      GPULEASE_SESSION，再不然用 DSH_SESSION_ID）
   gpulease queue [--json]
   gpulease cancel <队列号>
   gpulease alerts [--json] [--limit 30]
@@ -85,12 +87,19 @@ function newJobId(now = Date.now()): string {
   return `q${now.toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 }
 
-type SubmitOptions = { name: string; needMb: number; priority: number; command: string[] };
+type SubmitOptions = {
+  name: string;
+  needMb: number;
+  priority: number;
+  session: string | null;
+  command: string[];
+};
 
 function parseSubmit(argv: string[]): SubmitOptions | { error: string } {
   let name: string | null = null;
   let needMb = 0;
   let priority = 0;
+  let session: string | null = null;
   const rest: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -101,11 +110,12 @@ function parseSubmit(argv: string[]): SubmitOptions | { error: string } {
     if (arg === "--name" || arg === "-n") name = argv[++i] ?? null;
     else if (arg === "--need-vram" || arg === "--need-mb") needMb = Math.max(0, Number(argv[++i] ?? 0) || 0);
     else if (arg === "--priority" || arg === "-p") priority = Number(argv[++i] ?? 0) || 0;
+    else if (arg === "--session") session = argv[++i] ?? null;
     else rest.push(arg);
   }
   if (!name) return { error: "缺少 --name（给这个任务起个你认得出的名字）" };
   if (!rest.length) return { error: "缺少要执行的命令（用 -- 隔开，例如 -- python train.py）" };
-  return { name, needMb, priority, command: rest };
+  return { name, needMb, priority, session, command: rest };
 }
 
 async function commandSubmit(argv: string[]): Promise<number> {
@@ -116,6 +126,7 @@ async function commandSubmit(argv: string[]): Promise<number> {
   }
   const db = openStore();
   const id = newJobId();
+  const session = resolveSession(parsed.session);
   insertJob(db, {
     id,
     name: parsed.name,
@@ -123,9 +134,12 @@ async function commandSubmit(argv: string[]): Promise<number> {
     cwd: process.cwd(),
     need_mb: parsed.needMb,
     priority: parsed.priority,
+    session,
   });
   const ahead = listJobs(db, 200).filter((job) => job.state === "queued" && job.id !== id).length;
-  console.log(`已入队 ${id}：「${parsed.name}」${parsed.needMb ? `要 ${parsed.needMb} MB 显存` : ""}`);
+  console.log(
+    `已入队 ${id}：「${parsed.name}」${parsed.needMb ? `要 ${parsed.needMb} MB 显存` : ""}${session ? ` · 会话 ${shortSession(session)}` : ""}`,
+  );
   console.log(
     ahead ? `前面还有 ${ahead} 个 · 用 gpulease queue 看进度` : "排队等卡 · 起 gpulease daemon 就会自动上卡",
   );
@@ -149,7 +163,8 @@ async function commandQueue(argv: string[]): Promise<number> {
     const need = job.need_mb ? ` · 要 ${fmtMb(job.need_mb)}` : "";
     const reason = job.reason ? ` · ${job.reason}` : "";
     const run = job.run_id ? ` · ${job.run_id}` : "";
-    console.log(`${label}  ${job.id}  ${job.name}${need}${gpu}${reason}${run}`);
+    const who = job.session ? ` · 会话 ${shortSession(job.session)}` : "";
+    console.log(`${label}  ${job.id}  ${job.name}${need}${gpu}${reason}${run}${who}`);
   }
   return 0;
 }

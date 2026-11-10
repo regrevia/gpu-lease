@@ -15,6 +15,7 @@ function task(progress: TaskView["progress"]): TaskView {
       exit_code: null,
       pids: [4242],
       gpu_hint: 0,
+  session: null,
       log_path: null,
       last_output_at: Date.now(),
     },
