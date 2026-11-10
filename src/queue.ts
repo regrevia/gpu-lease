@@ -38,12 +38,18 @@ export function occupiesSlot(verdict: string): boolean {
 export const STUCK_STARTING_MS = 120_000;
 
 export function stuckJobs(
-  jobs: { id: string; name: string; state: string; started_at: number | null }[],
+  jobs: { id: string; name: string; state: string; started_at: number | null; created_at?: number | null }[],
   at: number,
   limitMs = STUCK_STARTING_MS,
 ): { id: string; name: string }[] {
+  // started_at 为空说明"起来了但没来得及记下时间"，这时候用 created_at 兜底：
+  // 否则一个 starting 的活会永远不算卡住，槽位就一直被它占着。
   return jobs
-    .filter((job) => job.state === "starting" && job.started_at !== null && at - job.started_at >= limitMs)
+    .filter((job) => {
+      if (job.state !== "starting") return false;
+      const since = job.started_at ?? job.created_at ?? null;
+      return since !== null && at - since >= limitMs;
+    })
     .map((job) => ({ id: job.id, name: job.name }));
 }
 

@@ -20,6 +20,20 @@ const TASKLIST = `${SYS_ROOT}\\System32\\tasklist.exe`;
 let cache: { at: number; procs: ProcessInfo[]; degraded: string | null } | null = null;
 const CACHE_MS = 4000;
 
+/** 三层探针全超时之后，60 秒内不再重试。一次全超时要吃掉 17–20 秒，每 tick 都试会把值班拖成慢动作。 */
+export const FAIL_BACKOFF_MS = 60_000;
+let failUntil = 0;
+
+export function shouldSkipProbe(now: number, until = failUntil): boolean {
+  return now < until;
+}
+
+/** 忘掉缓存与退避（测试与"用户手动刷一下"用）。 */
+export function resetProbeBackoff(): void {
+  cache = null;
+  failUntil = 0;
+}
+
 export function parseCimJson(raw: string): ProcessInfo[] {
   const text = raw.trim();
   if (!text) return [];
@@ -83,7 +97,13 @@ export async function listProcesses(opts: { refresh?: boolean; timeoutMs?: numbe
   degraded: string | null;
 }> {
   if (!IS_WIN) return { procs: [], degraded: "非 Windows 平台，进程层不可用" };
-  if (!opts.refresh && cache && Date.now() - cache.at < CACHE_MS) {
+  const now = Date.now();
+  if (!opts.refresh && shouldSkipProbe(now)) {
+    const wait = Math.max(1, Math.ceil((failUntil - now) / 1000));
+    const last = cache?.degraded ?? "进程层不可用";
+    return { procs: cache?.procs ?? [], degraded: `${last}；${wait}s 后再试` };
+  }
+  if (!opts.refresh && cache && now - cache.at < CACHE_MS) {
     return { procs: cache.procs, degraded: cache.degraded };
   }
 
@@ -106,6 +126,7 @@ export async function listProcesses(opts: { refresh?: boolean; timeoutMs?: numbe
   );
   if (cim.code === 0 && cim.stdout.trim()) procs = parseCimJson(cim.stdout);
   if (procs.length > 0) {
+    failUntil = 0;
     cache = { at: Date.now(), procs, degraded: null };
     return { procs, degraded: null };
   }
@@ -123,6 +144,7 @@ export async function listProcesses(opts: { refresh?: boolean; timeoutMs?: numbe
   );
   if (gp.code === 0 && gp.stdout.trim()) procs = parseGetProcessJson(gp.stdout);
   if (procs.length > 0) {
+    failUntil = 0;
     degraded = `只有进程名，命令行为空（CIM ${cimReason}）`;
     cache = { at: Date.now(), procs, degraded };
     return { procs, degraded };
@@ -135,6 +157,8 @@ export async function listProcesses(opts: { refresh?: boolean; timeoutMs?: numbe
     ? `只有进程名，命令行为空（CIM ${cimReason}；Get-Process ${gpReason}）`
     : `进程层不可用（CIM ${cimReason}；Get-Process ${gpReason}；tasklist ${why(tl, 5000)}）`;
 
+  // 三层全空才退避；拿到任何一层就正常缓存。
+  failUntil = procs.length > 0 ? 0 : Date.now() + FAIL_BACKOFF_MS;
   cache = { at: Date.now(), procs, degraded };
   return { procs, degraded };
 }

@@ -10,6 +10,11 @@
 - Windows 门禁新增一步 `install / uninstall on real Windows`：真机装 → 再装一次断言 PATH 不重复 → 从装好的位置跑 `ls --json` → 卸干净，并断言用户 PATH 回到原样、`Run` 项消失、exe 与快捷方式都没了；失败也走 `finally` 把注册表和 PATH 复原。门禁从 19 步变 20 步。
 - `docs/07-install-and-troubleshooting.md`：装 / 升级 / 卸载三条路径，和"PATH 没生效""自启没起来""门禁节点为什么没有显卡数字"这些实际会卡住人的地方。
 
+### 修
+
+- 进程层三层探针（CIM → Get-Process → tasklist）全超时之后退避 60 秒再试，不再每个 tick 都花 17–20 秒撞同一堵墙；`doctor` 里会看到"…s 后再试"。任何一层拿到结果就立刻恢复。
+- `starting` 状态但 `started_at` 为空的活，改用 `created_at` 判断是否卡住——否则它会永远不被认出来，槽位一直被占。
+
 ### 诚实边界
 
 - `install` / `uninstall` 只在 Windows 上工作，其它平台直接拒绝（不是"静默跳过"）。

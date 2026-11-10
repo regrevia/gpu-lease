@@ -89,3 +89,13 @@ test("停在 starting 太久的活要被认出来，刚开始的不算", () => {
   ];
   expect(stuckJobs(jobs, at)).toEqual([{ id: "old", name: "卡死" }]);
 });
+
+test("starting 却没记下 started_at 的活，用 created_at 兜底判断卡住", () => {
+  const at = 1_000_000;
+  const jobs = [
+    { id: "no-start-at-old", name: "没记时间", state: "starting", started_at: null, created_at: at - 200_000 },
+    { id: "no-start-at-new", name: "刚提交", state: "starting", started_at: null, created_at: at - 5_000 },
+    { id: "no-times", name: "都没记", state: "starting", started_at: null, created_at: null },
+  ];
+  expect(stuckJobs(jobs, at)).toEqual([{ id: "no-start-at-old", name: "没记时间" }]);
+});
