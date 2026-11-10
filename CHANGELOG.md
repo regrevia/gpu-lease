@@ -2,7 +2,7 @@
 
 ## 1.0.0
 
-契约在 1.0 冻结：只新增 `doctor --acceptance` 参数与 `AcceptanceReport` 字段，没有删改已发布字段或 `verdict` / `kind` / `state` 的取值集合。`bun test` 137 条 / 381 断言；Windows 门禁 24 步，除 push 时跳过的发布步骤外全绿。
+契约在 1.0 冻结：只新增 `doctor --acceptance` 参数与 `AcceptanceReport` 字段，没有删改已发布字段或 `verdict` / `kind` / `state` 的取值集合。`bun test` 137 条 / 381 断言；Windows 门禁 24 步，除按条件跳过的两步外全绿（tag run `42829766746`，22 步执行全过）。产物：`gpulease.exe` 115,349,504 字节 / 110 MB，SHA256 `3889d554…db5215f`；zip 54,750,630 字节 / 52.2 MB，SHA256 `03f2bc23…ad657`。节点上没有 NVIDIA 卡，显存读数与真负载判定按矩阵仍是「待真机」。
 
 
 - **修**：`history --gpu abc` / `history --gpu`（缺值）/ `history --minutes 0` 以前被悄悄当成"看全部卡 / 默认 30 分钟"，现在按参数错误打到 stderr 并以 2 退出（`--gpu 要一个显卡序号（0、1…）`）。原因是人以为在看某一张卡，实际看到的是全部。
