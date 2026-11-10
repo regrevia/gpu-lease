@@ -4,7 +4,7 @@
 // 每一步都只说"做了什么"，失败就说清哪一步失败、原话是什么——不假装成功。
 
 import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { exec, IS_WIN } from "./collect/exec";
 import { stateDir } from "./paths";
 
