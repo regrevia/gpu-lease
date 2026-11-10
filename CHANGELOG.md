@@ -10,6 +10,11 @@
 - 老数据库不用删：`runs` / `jobs` 缺 `session` 列时启动自动 `ALTER TABLE ADD COLUMN`，旧记录读出来是 null。
 - `docs/08-contract.md` 补 `session` 字段与语义。按契约，次版本新增字段属于允许的变更。
 
+### 验
+
+- 自托管 Windows 节点门禁 run `42782258490` 20 步全绿；真机直接断言 `run --session gate-sess` 后 `ls --json` 的 `run.session` 就是 `gate-sess`，不写 `--session` 时为 `null`。
+- `bun test` 123 条 / 311 断言，其中会话 6 条（来源优先级、截断、存储往返、老库迁移）+ 端到端 4 条（flag / 环境变量 / submit 覆盖环境 / `ls` 人读输出带短名）。
+
 ### 诚实边界
 
 - `session` 只是归属标签，不参与调度、不构成权限边界：两个会话仍然共用同一套队列与卡位。谁都能 `cancel` 别人的任务。
