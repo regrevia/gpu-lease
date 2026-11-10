@@ -44,7 +44,7 @@ bun src/main.ts <子命令> --json
 | `sessions` | `--json` | 按会话汇总在跑 / 排队 / 最差判定 / 整体进度 | 0 |
 | `cancel` | `<队列号>` | 取消一个还在排队的任务 | 0；没有这个号 1；已经不在排队 1；不给号 2 |
 | `alerts` | `--json`、`--limit`（默认 30） | 最近的告警事件 | 0 |
-| `history` | `--minutes`（默认 30，最小 1）、`--gpu` N、`--json` | 每张卡最近一段时间的采样曲线 | 0 |
+| `history` | `--minutes`（默认 30，最小 1）、`--gpu` N、`--json` | 每张卡最近一段时间的采样曲线 | 0；`--minutes` / `--gpu` 写错 2 |
 | `doctor` | `--json`、`--bundle`、`--soak`、`--seconds`（默认 30）、`--probe` | 自检；`--bundle` 生成诊断包，`--soak` 量值班开销 | 0 |
 | `install` | `--autostart`、`--no-start-menu`、`--dir` DIR、`--json` | 装进 Windows 用户目录 | 0；非 Windows 1 |
 | `uninstall` | `--purge`、`--dir` DIR、`--json` | 卸载 | 0；有删不掉的 1；非 Windows 1 |
@@ -55,7 +55,7 @@ bun src/main.ts <子命令> --json
 
 - `0`：做完了。`watch` / `serve` / `daemon` 是收到退出信号后返回 0。
 - `1`：做不到。`run` 把它透传给调用方——子进程退出码是 7，`gpulease run` 就退 7。
-- `2`：参数不对，什么也没做。例如缺 `--name`、缺 `--` 后面的命令、未知子命令。
+- `2`：参数不对，什么也没做。例如缺 `--name`、缺 `--` 后面的命令、未知子命令、`history --gpu abc`（要纯数字序号）、`history --minutes 0`。
 
 错误信息分两路：参数错误打到 stderr 并以 2 退出；`run` 的子进程起不来（可执行文件不存在）时把 `出错了：<原因>` 写进该任务的日志，stderr 只有一行，以 1 退出。
 
@@ -68,7 +68,7 @@ $ gpulease nope
 
 后面跟整段用法，退出码 2。
 
-`--need-mb` 是 `--need-vram` 的别名，两个都收，单位都是 MB。`--gpu` 只接受纯数字（`/^\d+$/`），写 `--gpu 0,1` 会被忽略成"没指定卡"。`doctor --probe` 存在但没写进用法文本：它把几条枚举进程的命令各跑一遍，结果进 `probe` 字段。
+`--need-mb` 是 `--need-vram` 的别名，两个都收，单位都是 MB。`--gpu` 只接受纯数字（`/^\d+$/`）：`run` / `submit` 写 `--gpu 0,1` 会被忽略成"没指定卡"，`history` 写错则直接以 2 退出（`--gpu 要一个显卡序号（0、1…）`），不当成看全部卡。`doctor --probe` 存在但没写进用法文本：它把几条枚举进程的命令各跑一遍，结果进 `probe` 字段。
 
 ## JSON 字段
 

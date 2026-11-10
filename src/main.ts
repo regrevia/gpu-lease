@@ -256,10 +256,22 @@ async function commandAlerts(argv: string[]): Promise<number> {
 }
 
 async function commandHistory(argv: string[]): Promise<number> {
+  // 参数写错就报错退出，不悄悄当成「看全部 / 默认 30 分钟」——那样人会以为看的是某张卡。
   const mArg = argv[argv.indexOf("--minutes") + 1];
-  const minutes = argv.includes("--minutes") && mArg ? Math.max(1, Number(mArg) || 30) : 30;
+  const hasMinutes = argv.includes("--minutes");
+  if (hasMinutes && !(mArg && /^\d+$/.test(mArg) && Number(mArg) >= 1)) {
+    process.stderr.write("--minutes 要一个正整数（分钟）\n");
+    return 2;
+  }
+  const minutes = hasMinutes ? Number(mArg) : 30;
+
   const gArg = argv[argv.indexOf("--gpu") + 1];
-  const onlyGpu = argv.includes("--gpu") && gArg ? Number(gArg) : null;
+  const hasGpu = argv.includes("--gpu");
+  if (hasGpu && !(gArg && /^\d+$/.test(gArg))) {
+    process.stderr.write("--gpu 要一个显卡序号（0、1…）\n");
+    return 2;
+  }
+  const onlyGpu = hasGpu ? Number(gArg) : null;
 
   const now = Date.now();
   const state = await buildState({ includeEnded: false });

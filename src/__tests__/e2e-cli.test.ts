@@ -216,4 +216,20 @@ describe("CLI 端到端（假 GPU）", () => {
       expect(task!.run.session).toBe(`s-conc-${name}`);
     }
   }, 60000);
+
+  test("history 参数写错时报错退出，不当成看全部卡", async () => {
+    const badGpu = await cli(["history", "--gpu", "abc"]);
+    expect(badGpu.code).toBe(2);
+    expect(badGpu.err).toContain("--gpu");
+
+    const missingGpu = await cli(["history", "--gpu"]);
+    expect(missingGpu.code).toBe(2);
+
+    const badMinutes = await cli(["history", "--minutes", "0"]);
+    expect(badMinutes.code).toBe(2);
+    expect(badMinutes.err).toContain("--minutes");
+
+    const ok = await cli(["history", "--gpu", "0", "--minutes", "5"]);
+    expect(ok.code).toBe(0);
+  }, 30000);
 });
