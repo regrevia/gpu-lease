@@ -88,4 +88,14 @@ describe("CLI 端到端（假 GPU）", () => {
     expect(state.gpus[0].vram_used_mb).toBe(18234);
     for (const p of state.procs) expect(p.vram_mb).toBeNull();
   }, 60000);
+  test("submit 的 --need-mb 与 --need-vram 是同一个东西，两种写法都落进 need_mb", async () => {
+    const a = await cli(["submit", "--name", "别名-vram", "--need-vram", "8192", "--", process.execPath, "-e", "0"], "two-gpu");
+    expect(a.code).toBe(0);
+    const b = await cli(["submit", "--name", "别名-mb", "--need-mb", "4096", "--", process.execPath, "-e", "0"], "two-gpu");
+    expect(b.code).toBe(0);
+    const q = await cli(["queue", "--json"], "two-gpu");
+    const jobs = JSON.parse(q.out) as { name: string; need_mb: number }[];
+    expect(jobs.find((j) => j.name === "别名-vram")!.need_mb).toBe(8192);
+    expect(jobs.find((j) => j.name === "别名-mb")!.need_mb).toBe(4096);
+  }, 60000);
 });

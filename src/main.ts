@@ -29,6 +29,7 @@ const HELP = `gpulease ${VERSION} — 显卡值班员
   gpulease serve [--port 7788] [--host 127.0.0.1]
   gpulease daemon [--interval 5000] [--webhook URL] [--once]
   gpulease submit --name 训练 [--need-vram 12] [--priority 5] -- python train.py
+    （--need-mb 是 --need-vram 的别名，两个都收）
   gpulease queue [--json]
   gpulease cancel <队列号>
   gpulease alerts [--json] [--limit 30]
@@ -98,7 +99,7 @@ function parseSubmit(argv: string[]): SubmitOptions | { error: string } {
       break;
     }
     if (arg === "--name" || arg === "-n") name = argv[++i] ?? null;
-    else if (arg === "--need-vram") needMb = Math.max(0, Number(argv[++i] ?? 0) || 0);
+    else if (arg === "--need-vram" || arg === "--need-mb") needMb = Math.max(0, Number(argv[++i] ?? 0) || 0);
     else if (arg === "--priority" || arg === "-p") priority = Number(argv[++i] ?? 0) || 0;
     else rest.push(arg);
   }

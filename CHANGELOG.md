@@ -12,6 +12,7 @@
 
 ### 修
 
+- `submit` 的 `--need-vram` 收了别名 `--need-mb`（队列里这个字段本来就叫 `need_mb`，两个名字指的是同一件事）。
 - 进程层三层探针（CIM → Get-Process → tasklist）全超时之后退避 60 秒再试，不再每个 tick 都花 17–20 秒撞同一堵墙；`doctor` 里会看到"…s 后再试"。任何一层拿到结果就立刻恢复。
 - `starting` 状态但 `started_at` 为空的活，改用 `created_at` 判断是否卡住——否则它会永远不被认出来，槽位一直被占。
 
