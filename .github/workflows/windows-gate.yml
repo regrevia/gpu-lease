@@ -521,6 +521,20 @@ jobs:
           }
           $global:LASTEXITCODE = 0
 
+      # 验收矩阵不能悄悄变胖：新增一条只能在真机验的结论就算没证据，超过 8 条直接红。
+      - name: acceptance matrix guard
+        shell: pwsh
+        run: |
+          $doc = "docs/09-acceptance.md"
+          if (-not (Test-Path $doc)) { throw "acceptance matrix missing: $doc" }
+          $lines = (Get-Content $doc).Count
+          $pending = ([string]([char]0x5F85) + [char]0x771F + [char]0x673A)
+          $rows = @(Get-Content $doc | Where-Object { $_ -match '^\| [0-9]' -and $_.Contains($pending) }).Count
+          Write-Host "matrix: lines=$lines pending_rows=$rows"
+          if ($lines -lt 60) { throw "acceptance matrix too short: $lines lines" }
+          if ($rows -gt 8) { throw "acceptance matrix has $rows pending-on-real-machine rows, budget is 8" }
+          $global:LASTEXITCODE = 0
+
       - name: pack zip
         if: hashFiles('package.json') != ''
         shell: powershell

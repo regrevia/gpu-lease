@@ -87,7 +87,7 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 
 产物不是"我们机器上编译过"，而是在真的 Windows 上跑过才算数。自托管节点 `regrevia-gpu-lease`（Windows 11，管理员服务）承接 `.github/workflows/windows-gate.yml`：编译单文件 exe → 摘掉 PATH 里的 Node 再跑 → `doctor --json` 必须诚实报告无卡 → `run` 真起子进程且 stdout 被转发 → `ls --json` 能查到这条记录且判定为正常 → 子进程退出码 7 原样传回 → 出 SHA256 → tag 才发 Release。
 
-那条节点**没有 NVIDIA 显卡**，所以它验的是打包、CLI/JSON 契约、托管启动、进程归属、无卡降级；显卡数字与多卡行为要靠真机 `gpulease doctor --bundle` 的输出补。细节见 [Windows 真机验收](docs/05-windows-verification.md)。
+那条节点**没有 NVIDIA 显卡**，所以它验的是打包、CLI/JSON 契约、托管启动、进程归属、无卡降级；显卡数字与多卡行为要靠真机 `gpulease doctor --bundle` 的输出补。细节见 [Windows 真机验收](docs/05-windows-verification.md)；每条结论对应哪条证据（节点 / 夹具 / 待真机）见 [v1.0 验收矩阵](docs/09-acceptance.md)。
 
 实测体积：**exe 110 MB，zip 52.2 MB**（Bun 运行时占绝大部分，`--minify` 无差别）。比调研阶段的官方口径大得多，按这个数字设计下载与首启体验。
 
@@ -97,6 +97,7 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 |---|---|
 | [五分钟上手](docs/QUICKSTART.md) | 装上、看一眼卡、托管一个任务、看进度、排队换卡 |
 | [CLI 与 JSON 契约](docs/08-contract.md) | v1.0 冻结：命令、退出码、每个 `--json` 的字段、HTTP 路由、semver 规则 |
+| [v1.0 验收矩阵](docs/09-acceptance.md) | 每句「支持」的证据来源；剩下哪几条只能在有卡的机器上验 |
 | [安装与排障](docs/07-install-and-troubleshooting.md) | 装、升级、卸、七种常见现象怎么查 |
 | [产品设计](docs/02-product-design.md) | 命题、用户、核心概念、播报规则表、面板、路线 |
 | [技术架构](docs/03-architecture.md) | 模块、采集、归属、适配器、规则引擎、API、打包 |
@@ -109,7 +110,7 @@ Linux、容器、多机、SLURM 一律不做。换来的是：一条验收线、
 ## 目前范围
 
 已做（v0.7）：采集 + 托管启动 + 归属 + 判定 + 进度 + `ls` / `watch` / `serve` 三个入口 + `doctor` 自检 + 诊断包 + 排队与常驻值班选卡 + 告警（冷却、`recovered` 照发）+ 占用率历史（`history`）+ 值班崩溃现场 + 开销自测（`doctor --soak`）+ `install` / `uninstall` + 任务认会话（`--session` / `DSH_SESSION_ID`）+ `sessions` 按会话汇总。
-在做（1.0）：真机验收矩阵、契约冻结复核。
+在做（1.0）：按 [验收矩阵](docs/09-acceptance.md) 补齐真机八项（显卡读数、WDDM 显存、真负载判定、eGPU 热拔、TDR、真训练进度、真多任务调度、TUI），再复核一次契约冻结。
 没做：托盘气泡、自动杀、多机、Linux / macOS 的生产支持。这些按 [路线](ROADMAP.md) 排。
 
 **验收标准：第一眼能看出"原来这是我的训练在跑，跑到哪了"。**

@@ -29,7 +29,7 @@
 - 各条健康规则在真负载下的误报率
 - `watch` 的交互式 TUI（runner 没有 TTY，`process.stdin.setRawMode` 不在这里验）
 
-这些要用有卡的机器验。两条路：① 用户在自己的 GPU 机器上跑 `gpulease doctor --bundle`，把生成的 JSON 贴回来；② 把那台机器也注册成 runner（同一条 `onboard-repo` 流程），以后每次发布自动验。
+这些要用有卡的机器验；每条结论的证据状态见 [v1.0 验收矩阵](09-acceptance.md)，第 9 节是拿到机器后照着跑的十分钟清单。两条路：① 用户在自己的 GPU 机器上跑 `gpulease doctor --bundle`，把生成的 JSON 贴回来；② 把那台机器也注册成 runner（同一条 `onboard-repo` 流程），以后每次发布自动验。
 
 **在拿到真机输出之前，任何 GPU 相关结论都只能写成"按文档推断"。**
 
